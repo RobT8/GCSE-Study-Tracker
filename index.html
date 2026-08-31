@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revision Compass</title>
+<meta name="description" content="A GCSE progress tracker: map every subject, topic and sub-topic, track mastery, and log real test results.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #f4f6f4; --card: #ffffff; --card-2: #eef1ee;
+    --ink: #1a2521; --ink-soft: #465049; --ink-faint: #6f7a73;
+    --line: #dbe1dc; --line-strong: #c4ccc5;
+    --accent: #1f6b57; --accent-soft: #e3efe9; --accent-ink: #124535;
+    --r: #c14a3c; --r-bg: #f7e2de; --a: #c98a1a; --a-bg: #f7ecd6;
+    --g: #2f8f5b; --g-bg: #dcefe1; --b: #2f6d8f; --b-bg: #dbe9f0;
+    --shadow: 0 1px 2px rgba(20,40,30,.05), 0 6px 20px rgba(20,40,30,.06);
+    --danger: #c14a3c;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --paper: #12160f; --card: #1a1f18; --card-2: #222820;
+      --ink: #e8ede6; --ink-soft: #b3bcb3; --ink-faint: #838d83;
+      --line: #2b322a; --line-strong: #3a423a;
+      --accent: #5cbf9d; --accent-soft: #1d3129; --accent-ink: #bfe8d8;
+      --r: #e07a6c; --r-bg: #3a2320; --a: #e0b05a; --a-bg: #362c17;
+      --g: #5fc082; --g-bg: #1c3325; --b: #6cb2d6; --b-bg: #17303b;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --danger: #e07a6c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12160f; --card: #1a1f18; --card-2: #222820;
+    --ink: #e8ede6; --ink-soft: #b3bcb3; --ink-faint: #838d83;
+    --line: #2b322a; --line-strong: #3a423a;
+    --accent: #5cbf9d; --accent-soft: #1d3129; --accent-ink: #bfe8d8;
+    --r: #e07a6c; --r-bg: #3a2320; --a: #e0b05a; --a-bg: #362c17;
+    --g: #5fc082; --g-bg: #1c3325; --b: #6cb2d6; --b-bg: #17303b;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --danger: #e07a6c;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+  h1,h2,h3,h4 { font-family: "Spectral", Georgia, serif; font-weight: 600; line-height: 1.15; text-wrap: balance; margin: 0; }
+  button { font-family: inherit; }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+  /* Top bar */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--card) 92%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+  }
+  .bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; max-width: 960px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .compass { width: 28px; height: 28px; flex: none; border: 2px solid var(--accent); border-radius: 50%; position: relative; background: var(--accent-soft); }
+  .compass::before { content: ""; position: absolute; inset: 0; margin: auto; width: 2px; height: 16px; background: var(--accent); transform: rotate(38deg); border-radius: 2px; }
+  .compass::after { content: ""; position: absolute; inset: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .brand b { font-family: "Spectral", serif; font-size: 1.02rem; }
+  .brand small { display: block; font-family: "IBM Plex Sans"; font-size: .72rem; color: var(--ink-faint); font-weight: 400; margin-top: -2px; }
+  .spacer { flex: 1; }
+  .icon-btn { background: var(--card-2); border: 1px solid var(--line); color: var(--ink-soft); border-radius: 8px; width: 36px; height: 36px; cursor: pointer; font-size: 1rem; display: grid; place-items: center; }
+  .icon-btn:hover { border-color: var(--line-strong); }
+
+  /* Tabs */
+  nav.tabs { display: flex; gap: 4px; padding: 0 20px; max-width: 960px; margin: 0 auto; }
+  nav.tabs button {
+    background: none; border: none; cursor: pointer; padding: 12px 14px; color: var(--ink-faint);
+    font-size: .92rem; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  nav.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  nav.tabs button:hover { color: var(--ink); }
+
+  main { padding: 26px 0 80px; }
+  .view-head { margin-bottom: 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .view-head h2 { font-size: 1.5rem; }
+  .view-head p { margin: 4px 0 0; color: var(--ink-faint); font-size: .9rem; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; border-radius: 9px; padding: 9px 14px; font-size: .88rem; font-weight: 600; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .btn.primary, :root:not([data-theme="light"]) .btn.primary { color: #08120d; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #08120d; } }
+  .btn.primary:hover { filter: brightness(1.05); }
+  .btn.sm { padding: 5px 10px; font-size: .8rem; border-radius: 7px; }
+  .btn.ghost { background: none; border-color: transparent; color: var(--ink-faint); }
+  .btn.ghost:hover { background: var(--card-2); border-color: var(--line); }
+
+  /* Cards & grids */
+  .grid { display: grid; gap: 16px; }
+  .g-3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  .pad { padding: 18px 20px; }
+
+  /* Stat tiles */
+  .stat { padding: 18px 20px; }
+  .stat .k { font-family: "IBM Plex Mono", monospace; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
+  .stat .v { font-family: "Spectral", serif; font-size: 2rem; font-weight: 700; margin-top: 4px; line-height: 1; }
+  .stat .sub { font-size: .8rem; color: var(--ink-soft); margin-top: 6px; }
+
+  /* Ring */
+  .ring { width: 56px; height: 56px; flex: none; border-radius: 50%; display: grid; place-items: center; }
+  .ring i { width: 44px; height: 44px; border-radius: 50%; background: var(--card); display: grid; place-items: center; font-style: normal; font-weight: 700; font-family: "IBM Plex Mono", monospace; font-size: .84rem; }
+
+  /* Subject rows */
+  .subj { border-bottom: 1px solid var(--line); }
+  .subj:last-child { border-bottom: none; }
+  .subj-btn { width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: 15px 20px; display: flex; align-items: center; gap: 14px; color: inherit; font-family: inherit; }
+  .subj-btn:hover { background: var(--card-2); }
+  .chev { transition: transform .2s; color: var(--ink-faint); font-size: .72rem; flex: none; }
+  .subj-btn[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .subj-name { font-weight: 600; font-size: .98rem; }
+  .subj-meta { font-size: .76rem; color: var(--ink-faint); }
+  .bar { height: 8px; border-radius: 6px; background: var(--card-2); overflow: hidden; width: 130px; flex: none; }
+  .bar i { display: block; height: 100%; border-radius: 6px; transition: width .3s; }
+  .pct { font-family: "IBM Plex Mono", monospace; font-size: .82rem; color: var(--ink-soft); width: 40px; text-align: right; flex: none; }
+
+  .topics { padding: 2px 20px 14px; }
+  .topic { padding: 10px 0; border-top: 1px dashed var(--line); }
+  .topic:first-child { border-top: none; }
+  .topic-head { display: flex; align-items: center; gap: 10px; }
+  .topic-head .tn { flex: 1; font-size: .92rem; font-weight: 500; }
+  .subs { margin: 8px 0 2px; padding-left: 4px; display: grid; gap: 7px; }
+  .sub-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sub-row .sn { flex: 1; min-width: 140px; font-size: .86rem; color: var(--ink-soft); }
+
+  .chip { font-family: "IBM Plex Mono", monospace; font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 999px; font-weight: 600; flex: none; white-space: nowrap; }
+  .chip.r { background: var(--r-bg); color: var(--r); } .chip.a { background: var(--a-bg); color: var(--a); }
+  .chip.g { background: var(--g-bg); color: var(--g); } .chip.b { background: var(--b-bg); color: var(--b); }
+  .chip.grade { background: var(--accent-soft); color: var(--accent-ink); }
+
+  /* RAG selector */
+  .rag { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .rag button { border: none; background: var(--card); color: var(--ink-faint); cursor: pointer; padding: 4px 9px; font-size: .68rem; font-family: "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .03em; border-left: 1px solid var(--line); }
+  .rag button:first-child { border-left: none; }
+  .rag button[aria-pressed="true"].vr { background: var(--r-bg); color: var(--r); }
+  .rag button[aria-pressed="true"].va { background: var(--a-bg); color: var(--a); }
+  .rag button[aria-pressed="true"].vg { background: var(--g-bg); color: var(--g); }
+  .rag button[aria-pressed="true"].vb { background: var(--b-bg); color: var(--b); }
+  .rag button:hover { color: var(--ink); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: .78rem; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  .attention li { list-style: none; }
+  ul.attention { margin: 0; padding: 0; display: grid; gap: 8px; }
+  ul.attention li { display: flex; align-items: center; gap: 10px; font-size: .88rem; padding: 8px 12px; background: var(--card-2); border-radius: 9px; }
+  ul.attention .where { color: var(--ink-faint); font-size: .8rem; }
+
+  /* Tests */
+  .test-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .test-row:first-child { border-top: none; }
+  .test-row .ti { flex: 1; }
+  .test-row .tt { font-weight: 600; font-size: .92rem; }
+  .test-row .td { font-size: .78rem; color: var(--ink-faint); }
+  .score-pill { font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: .95rem; }
+
+  .spark { display: flex; align-items: flex-end; gap: 4px; height: 40px; }
+  .spark b { display: block; width: 10px; border-radius: 3px 3px 0 0; background: var(--accent); opacity: .8; }
+
+  .empty { text-align: center; color: var(--ink-faint); padding: 40px 20px; font-size: .9rem; }
+  .empty .big { font-size: 1.6rem; margin-bottom: 8px; }
+
+  /* Modal */
+  .overlay { position: fixed; inset: 0; background: rgba(10,20,15,.5); display: grid; place-items: center; padding: 20px; z-index: 50; }
+  .modal { background: var(--card); border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); width: 100%; max-width: 460px; max-height: 90vh; overflow: auto; }
+  .modal h3 { font-size: 1.2rem; margin-bottom: 4px; }
+  .modal .m-body { padding: 22px; }
+  .modal .m-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 22px; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--card); }
+  label.f { display: block; margin-top: 14px; }
+  label.f span { display: block; font-size: .78rem; color: var(--ink-soft); margin-bottom: 5px; font-weight: 500; }
+  input, select, textarea { width: 100%; font-family: inherit; font-size: .92rem; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--paper); color: var(--ink); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .hint { font-size: .76rem; color: var(--ink-faint); margin-top: 6px; }
+  .checks { display: grid; gap: 6px; margin-top: 6px; max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 9px; padding: 10px; }
+  .checks label { display: flex; align-items: center; gap: 8px; font-size: .86rem; }
+  .checks input { width: auto; }
+
+  .del { color: var(--danger); }
+  .muted { color: var(--ink-faint); }
+  .foot-note { text-align: center; color: var(--ink-faint); font-size: .78rem; margin-top: 30px; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 560px) {
+    .bar { width: 84px; }
+    .subj-meta { display: none; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">
+      <div class="compass" aria-hidden="true"></div>
+      <div><b>Revision Compass</b><small id="studentLine">GCSE progress</small></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn sm" id="editStudent" title="Edit profile &amp; target grades">Profile</button>
+    <button class="icon-btn" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-view="dashboard">Dashboard</button>
+    <button role="tab" aria-selected="false" data-view="subjects">Subjects</button>
+    <button role="tab" aria-selected="false" data-view="tests">Tests</button>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap" id="app"></div>
+</main>
+
+<div id="modalRoot"></div>
+
+<script>
+"use strict";
+
+/* ---------------- Storage ---------------- */
+var KEY = "revisionCompass.v1";
+var state = null;
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private mode etc. */ }
+}
+function load() {
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return null;
+}
+
+/* ---------------- Seed data ---------------- */
+function seed() {
+  function st(name, conf) { return { id: uid(), name: name, confidence: conf }; }
+  function tp(name, subs) { return { id: uid(), name: name, subtopics: subs }; }
+  return {
+    student: { name: "Sample Student", year: "Year 11", season: "Summer 2026" },
+    subjects: [
+      { id: uid(), name: "Mathematics", board: "Edexcel", target: "6", topics: [
+        tp("Number", [ st("Surds & indices", 90), st("Standard form", 78), st("Fractions & percentages", 72) ]),
+        tp("Algebra", [ st("Solving quadratics", 75), st("Simultaneous equations", 60), st("Sequences", 55) ]),
+        tp("Ratio & proportion", [ st("Direct & inverse proportion", 48), st("Compound measures", 52) ]),
+        tp("Geometry & measures", [ st("Circle theorems", 30), st("Trigonometry", 42), st("Vectors", 25) ]),
+        tp("Probability & statistics", [ st("Tree diagrams", 68), st("Cumulative frequency", 70) ])
+      ]},
+      { id: uid(), name: "Combined Science — Biology", board: "AQA", target: "5", topics: [
+        tp("Cell biology", [ st("Cell structure", 80), st("Transport in cells", 72) ]),
+        tp("Infection & response", [ st("Communicable diseases", 55), st("The immune system", 50) ]),
+        tp("Bioenergetics", [ st("Photosynthesis", 38), st("Respiration", 32) ]),
+        tp("Homeostasis & response", [ st("The nervous system", 28), st("Hormones", 40) ])
+      ]},
+      { id: uid(), name: "English Literature", board: "AQA", target: "6", topics: [
+        tp("Shakespeare — Macbeth", [ st("Themes & context", 76), st("Key quotations", 70) ]),
+        tp("19th-century novel — A Christmas Carol", [ st("Scrooge's arc", 74), st("Structure & morality", 66) ]),
+        tp("Modern text — An Inspector Calls", [ st("Social responsibility", 36), st("Characters", 44) ]),
+        tp("Poetry — Power & Conflict", [ st("Comparing poems", 52), st("Unseen poetry", 48) ])
+      ]}
+    ],
+    tests: [
+      { id: uid(), subjectId: null, name: "Autumn mock — Paper 1", date: "2025-11-14", pct: 58, grade: "5", topicIds: [], note: "Whole-paper mock" }
+    ]
+  };
+}
+/* attach a couple of realistic tests to seeded subjects */
+function attachSeedTests(s) {
+  var maths = s.subjects[0], bio = s.subjects[1];
+  s.tests[0].subjectId = maths.id;
+  s.tests.push({ id: uid(), subjectId: bio.id, name: "End of unit: Bioenergetics", date: "2026-01-20", pct: 41, grade: "4",
+    topicIds: [ bio.topics[2].id ], note: "Class test" });
+  s.tests.push({ id: uid(), subjectId: maths.id, name: "Spring assessment", date: "2026-03-05", pct: 64, grade: "6",
+    topicIds: [], note: "Whole-subject test" });
+  return s;
+}
+
+/* ---------------- Scoring ---------------- */
+/* Mastery bands */
+function band(score) {
+  if (score >= 85) return { key: "b", label: "Mastered", color: "var(--b)" };
+  if (score >= 65) return { key: "g", label: "Secure", color: "var(--g)" };
+  if (score >= 40) return { key: "a", label: "Learning", color: "var(--a)" };
+  return { key: "r", label: "Weak", color: "var(--r)" };
+}
+
+/* Recency-weighted average test % for a given topic in a subject.
+   Tests tagged to the topic count fully; whole-subject tests (no topicIds) count at lower weight. */
+function testEvidenceForTopic(subject, topicId) {
+  var rel = state.tests.filter(function (t) {
+    return t.subjectId === subject.id && typeof t.pct === "number" &&
+      (t.topicIds.indexOf(topicId) >= 0 || t.topicIds.length === 0);
+  });
+  if (!rel.length) return null;
+  rel.sort(function (a, b) { return (a.date < b.date ? -1 : 1); });
+  var wsum = 0, vsum = 0;
+  rel.forEach(function (t, i) {
+    var recency = (i + 1);                                   // later tests weigh more
+    var tagged = t.topicIds.indexOf(topicId) >= 0 ? 1 : 0.4; // whole-subject tests count less
+    var w = recency * tagged;
+    wsum += w; vsum += w * t.pct;
+  });
+  return wsum ? vsum / wsum : null;
+}
+
+function topicSelfScore(topic) {
+  if (!topic.subtopics.length) return 0;
+  var sum = topic.subtopics.reduce(function (a, s) { return a + s.confidence; }, 0);
+  return sum / topic.subtopics.length;
+}
+
+/* Final topic mastery: blend self-rating with real test evidence (tests weigh more). */
+function topicMastery(subject, topic) {
+  var self = topicSelfScore(topic);
+  var ev = testEvidenceForTopic(subject, topic.id);
+  if (ev === null) return self;
+  return Math.round(self * 0.35 + ev * 0.65);
+}
+function subjectMastery(subject) {
+  if (!subject.topics.length) return 0;
+  var sum = subject.topics.reduce(function (a, t) { return a + topicMastery(subject, t); }, 0);
+  return Math.round(sum / subject.topics.length);
+}
+function overallMastery() {
+  if (!state.subjects.length) return 0;
+  var sum = state.subjects.reduce(function (a, s) { return a + subjectMastery(s); }, 0);
+  return Math.round(sum / state.subjects.length);
+}
+/* Rough predicted 9–1 grade from mastery, for the dashboard headline. */
+function predictedGrade(mastery) {
+  if (mastery >= 88) return "8–9";
+  if (mastery >= 78) return "7";
+  if (mastery >= 68) return "6";
+  if (mastery >= 55) return "5";
+  if (mastery >= 42) return "4";
+  if (mastery >= 30) return "3";
+  return "1–2";
+}
+
+/* ---------------- Helpers ---------------- */
+function el(html) { var d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstChild; }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+  return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+function fmtDate(d) {
+  if (!d) return "";
+  var parts = d.split("-"); if (parts.length !== 3) return d;
+  var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return parseInt(parts[2],10) + " " + months[parseInt(parts[1],10)-1] + " " + parts[0];
+}
+function subjectById(id) { return state.subjects.find(function (s) { return s.id === id; }); }
+
+/* ---------------- Render: Dashboard ---------------- */
+function renderDashboard(root) {
+  var overall = overallMastery();
+  var attention = [];
+  state.subjects.forEach(function (s) {
+    s.topics.forEach(function (t) {
+      var m = topicMastery(s, t);
+      if (m < 40) attention.push({ subject: s.name, topic: t.name, m: m });
+    });
+  });
+  attention.sort(function (a, b) { return a.m - b.m; });
+
+  var head = el('<div class="view-head"><div>' +
+    '<span class="eyebrow">Overview</span>' +
+    '<h2>How ' + esc(state.student.name.split(" ")[0] || "he") + ' is doing</h2>' +
+    '<p>' + esc(state.student.year) + ' · ' + esc(state.student.season) + ' exams</p>' +
+    '</div></div>');
+  root.appendChild(head);
+
+  // Profile card — student details + target vs predicted per subject
+  var prof = el('<div class="card pad" style="margin-bottom:20px"></div>');
+  var profHead = el('<div style="display:flex;align-items:center;gap:12px;margin-bottom:2px">' +
+    '<div style="flex:1"><h3 style="font-size:1.05rem">' + esc(state.student.name) + '</h3>' +
+    '<div class="muted" style="font-size:.82rem">' + esc(state.student.year || "—") + ' · ' + esc(state.student.season || "—") + ' exams</div></div></div>');
+  var editProf = el('<button class="btn sm">Edit profile</button>');
+  editProf.addEventListener("click", openStudentModal);
+  profHead.appendChild(editProf);
+  prof.appendChild(profHead);
+  if (state.subjects.length) {
+    var tgrid = el('<div class="grid g-3" style="margin-top:14px"></div>');
+    state.subjects.forEach(function (s) {
+      var pm = subjectMastery(s), pg = predictedGrade(pm);
+      tgrid.appendChild(el('<div style="display:flex;align-items:center;gap:10px;font-size:.86rem">' +
+        '<span style="flex:1">' + esc(s.name) + '</span>' +
+        '<span class="chip grade" title="Target grade">🎯 ' + (s.target ? esc(s.target) : "—") + '</span>' +
+        '<span class="chip ' + band(pm).key + '" title="Currently tracking around">' + pg + '</span></div>'));
+    });
+    prof.appendChild(tgrid);
+    prof.appendChild(el('<p class="hint" style="margin-top:12px">🎯 target grade · coloured chip = grade he\'s tracking around now. Set targets via <b>Edit profile</b>.</p>'));
+  }
+  root.appendChild(prof);
+
+  var stats = el('<div class="grid g-3" style="margin-bottom:20px"></div>');
+  var b = band(overall);
+  stats.appendChild(el(
+    '<div class="card stat" style="display:flex;align-items:center;gap:16px">' +
+      '<div class="ring" style="background:conic-gradient(' + b.color + ' ' + overall + '%, var(--card-2) 0)">' +
+        '<i>' + overall + '%</i></div>' +
+      '<div><div class="k">Overall mastery</div>' +
+      '<div class="sub" style="margin-top:2px">' + b.label + ' across ' + state.subjects.length + ' subjects</div></div>' +
+    '</div>'));
+  stats.appendChild(el('<div class="card stat"><div class="k">Working around</div>' +
+    '<div class="v">' + predictedGrade(overall) + '</div>' +
+    '<div class="sub">rough grade from current mastery</div></div>'));
+  stats.appendChild(el('<div class="card stat"><div class="k">Needs attention</div>' +
+    '<div class="v" style="color:var(--r)">' + attention.length + '</div>' +
+    '<div class="sub">topics in the red zone</div></div>'));
+  root.appendChild(stats);
+
+  if (attention.length) {
+    var att = el('<div class="card pad" style="margin-bottom:20px"></div>');
+    att.appendChild(el('<h3 style="font-size:1.05rem;margin-bottom:12px">Focus here next</h3>'));
+    var ul = el('<ul class="attention"></ul>');
+    attention.slice(0, 5).forEach(function (a) {
+      ul.appendChild(el('<li><span class="chip r">' + a.m + '%</span>' +
+        '<span>' + esc(a.topic) + '</span>' +
+        '<span class="where" style="margin-left:auto">' + esc(a.subject) + '</span></li>'));
+    });
+    att.appendChild(ul);
+    root.appendChild(att);
+  }
+
+  var list = el('<div class="card"></div>');
+  if (!state.subjects.length) {
+    list.appendChild(el('<div class="empty"><div class="big">🧭</div>No subjects yet. Head to the <b>Subjects</b> tab to add some.</div>'));
+  } else {
+    state.subjects.forEach(function (s) {
+      var m = subjectMastery(s), bb = band(m);
+      var subj = el('<div class="subj"></div>');
+      var btn = el('<button class="subj-btn" aria-expanded="false">' +
+        '<span class="chev">▶</span>' +
+        '<span style="flex:1"><span class="subj-name">' + esc(s.name) + '</span>' +
+        (s.board ? '<span class="subj-meta"> · ' + esc(s.board) + (s.target ? ' · target ' + esc(s.target) : "") + '</span>' : "") +
+        '</span>' +
+        '<span class="bar"><i style="width:' + m + '%;background:' + bb.color + '"></i></span>' +
+        '<span class="pct">' + m + '%</span></button>');
+      var topicsWrap = el('<div class="topics" hidden></div>');
+      if (!s.topics.length) {
+        topicsWrap.appendChild(el('<p class="muted" style="font-size:.86rem;margin:6px 0">No topics yet.</p>'));
+      }
+      s.topics.forEach(function (t) {
+        var tm = topicMastery(s, t), tb = band(tm);
+        var ev = testEvidenceForTopic(s, t.id);
+        topicsWrap.appendChild(el('<div class="topic"><div class="topic-head">' +
+          '<span class="tn">' + esc(t.name) + '</span>' +
+          (ev !== null ? '<span class="chip grade" title="Includes real test evidence">✓ tested</span>' : "") +
+          '<span class="chip ' + tb.key + '">' + tb.label + '</span>' +
+          '<span class="pct">' + tm + '%</span></div></div>'));
+      });
+      btn.addEventListener("click", function () {
+        var open = btn.getAttribute("aria-expanded") === "true";
+        btn.setAttribute("aria-expanded", String(!open));
+        topicsWrap.hidden = open;
+      });
+      subj.appendChild(btn); subj.appendChild(topicsWrap);
+      list.appendChild(subj);
+    });
+  }
+  root.appendChild(list);
+
+  root.appendChild(el('<div class="legend">' +
+    '<span><span class="dot" style="background:var(--r)"></span> Weak (0–39)</span>' +
+    '<span><span class="dot" style="background:var(--a)"></span> Learning (40–64)</span>' +
+    '<span><span class="dot" style="background:var(--g)"></span> Secure (65–84)</span>' +
+    '<span><span class="dot" style="background:var(--b)"></span> Mastered (85–100)</span></div>'));
+  root.appendChild(el('<p class="foot-note">Scores blend his self-rating with real test results — tests weigh more. Everything saves to this browser.</p>'));
+}
+
+/* ---------------- Render: Subjects ---------------- */
+var RAG_LEVELS = [ { label: "Weak", v: 25, cls: "vr" }, { label: "Learning", v: 52, cls: "va" },
+                   { label: "Secure", v: 75, cls: "vg" }, { label: "Mastered", v: 92, cls: "vb" } ];
+function confToLevel(c) { if (c >= 85) return 3; if (c >= 65) return 2; if (c >= 40) return 1; return 0; }
+
+function renderSubjects(root) {
+  root.appendChild(el('<div class="view-head"><div>' +
+    '<span class="eyebrow">Curriculum map</span>' +
+    '<h2>Subjects &amp; topics</h2>' +
+    '<p>Set how secure he feels on each sub-topic. Tests (next tab) refine these automatically.</p>' +
+    '</div><button class="btn primary" id="addSubject">+ Subject</button></div>'));
+
+  if (!state.subjects.length) {
+    root.appendChild(el('<div class="card"><div class="empty"><div class="big">📚</div>No subjects yet — add his first one to get started.</div></div>'));
+  }
+
+  state.subjects.forEach(function (s) {
+    var card = el('<div class="card pad" style="margin-bottom:16px"></div>');
+    var head = el('<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:6px">' +
+      '<div style="flex:1"><h3 style="font-size:1.15rem">' + esc(s.name) + '</h3>' +
+      '<div class="muted" style="font-size:.82rem">' + esc(s.board || "No board set") +
+      (s.target ? ' · target grade ' + esc(s.target) : "") + '</div></div></div>');
+    var actions = el('<div style="display:flex;gap:6px"></div>');
+    var editB = el('<button class="btn sm ghost">Edit</button>');
+    var delB = el('<button class="btn sm ghost del">Delete</button>');
+    editB.addEventListener("click", function () { openSubjectModal(s); });
+    delB.addEventListener("click", function () {
+      confirmModal("Delete “" + s.name + "”?", "This removes the subject, its topics and any tests attached to it.", function () {
+        state.subjects = state.subjects.filter(function (x) { return x.id !== s.id; });
+        state.tests = state.tests.filter(function (t) { return t.subjectId !== s.id; });
+        save(); render();
+      });
+    });
+    actions.appendChild(editB); actions.appendChild(delB);
+    head.appendChild(actions);
+    card.appendChild(head);
+
+    s.topics.forEach(function (t) {
+      var tWrap = el('<div class="topic"></div>');
+      var tHead = el('<div class="topic-head"><span class="tn">' + esc(t.name) + '</span></div>');
+      var tAct = el('<span style="display:flex;gap:4px;margin-left:auto"></span>');
+      var addSub = el('<button class="btn sm ghost">+ Sub-topic</button>');
+      var renT = el('<button class="btn sm ghost">Rename</button>');
+      var delT = el('<button class="btn sm ghost del">✕</button>');
+      addSub.addEventListener("click", function () { openSubtopicModal(t); });
+      renT.addEventListener("click", function () { openTopicModal(s, t); });
+      delT.addEventListener("click", function () {
+        confirmModal("Delete topic “" + t.name + "”?", "Its sub-topics will be removed too.", function () {
+          s.topics = s.topics.filter(function (x) { return x.id !== t.id; }); save(); render();
+        });
+      });
+      tAct.appendChild(addSub); tAct.appendChild(renT); tAct.appendChild(delT);
+      tHead.appendChild(tAct);
+      tWrap.appendChild(tHead);
+
+      var subs = el('<div class="subs"></div>');
+      t.subtopics.forEach(function (st) {
+        var row = el('<div class="sub-row"><span class="sn">' + esc(st.name) + '</span></div>');
+        var rag = el('<div class="rag" role="group" aria-label="Confidence for ' + esc(st.name) + '"></div>');
+        RAG_LEVELS.forEach(function (lvl, i) {
+          var pressed = confToLevel(st.confidence) === i;
+          var b = el('<button class="' + lvl.cls + '" aria-pressed="' + pressed + '">' + lvl.label + '</button>');
+          b.addEventListener("click", function () {
+            st.confidence = lvl.v; save(); render();
+          });
+          rag.appendChild(b);
+        });
+        var delS = el('<button class="btn sm ghost del" title="Remove sub-topic">✕</button>');
+        delS.addEventListener("click", function () {
+          t.subtopics = t.subtopics.filter(function (x) { return x.id !== st.id; }); save(); render();
+        });
+        row.appendChild(rag); row.appendChild(delS);
+        subs.appendChild(row);
+      });
+      if (!t.subtopics.length) subs.appendChild(el('<span class="muted" style="font-size:.82rem">No sub-topics yet.</span>'));
+      tWrap.appendChild(subs);
+      card.appendChild(tWrap);
+    });
+
+    var addTopic = el('<button class="btn sm" style="margin-top:12px">+ Topic</button>');
+    addTopic.addEventListener("click", function () { openTopicModal(s, null); });
+    card.appendChild(addTopic);
+    root.appendChild(card);
+  });
+
+  var addBtn = root.querySelector("#addSubject");
+  if (addBtn) addBtn.addEventListener("click", function () { openSubjectModal(null); });
+}
+
+/* ---------------- Render: Tests ---------------- */
+function renderTests(root) {
+  root.appendChild(el('<div class="view-head"><div>' +
+    '<span class="eyebrow">Real evidence</span>' +
+    '<h2>Test &amp; mock results</h2>' +
+    '<p>Log school tests and mocks. These carry the most weight in his mastery scores.</p>' +
+    '</div><button class="btn primary" id="addTest">+ Log a test</button></div>'));
+
+  var addBtn = root.querySelector("#addTest");
+  addBtn.addEventListener("click", function () {
+    if (!state.subjects.length) { confirmModal("Add a subject first", "You need at least one subject before logging a test.", null); return; }
+    openTestModal(null);
+  });
+
+  /* Trend per subject */
+  if (state.tests.length) {
+    var trendCard = el('<div class="card pad" style="margin-bottom:18px"></div>');
+    trendCard.appendChild(el('<h3 style="font-size:1.05rem;margin-bottom:14px">Trend by subject</h3>'));
+    var tg = el('<div class="grid g-3"></div>');
+    state.subjects.forEach(function (s) {
+      var ts = state.tests.filter(function (t) { return t.subjectId === s.id && typeof t.pct === "number"; })
+        .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      if (!ts.length) return;
+      var spark = '<div class="spark">' + ts.map(function (t) {
+        return '<b style="height:' + Math.max(6, t.pct) + '%" title="' + esc(t.name) + ': ' + t.pct + '%"></b>';
+      }).join("") + '</div>';
+      var last = ts[ts.length - 1], first = ts[0];
+      var delta = ts.length > 1 ? (last.pct - first.pct) : 0;
+      tg.appendChild(el('<div><div style="font-weight:600;font-size:.88rem;margin-bottom:6px">' + esc(s.name) + '</div>' +
+        spark +
+        '<div class="muted" style="font-size:.78rem;margin-top:6px">Latest ' + last.pct + '%' +
+        (ts.length > 1 ? ' · ' + (delta >= 0 ? '↑ +' : '↓ ') + delta + '% since first' : '') + '</div></div>'));
+    });
+    if (!tg.children.length) tg.appendChild(el('<span class="muted" style="font-size:.85rem">Log a couple of tests to see trends.</span>'));
+    trendCard.appendChild(tg);
+    root.appendChild(trendCard);
+  }
+
+  var card = el('<div class="card pad"></div>');
+  if (!state.tests.length) {
+    card.appendChild(el('<div class="empty"><div class="big">📝</div>No tests logged yet.</div>'));
+  } else {
+    var sorted = state.tests.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    sorted.forEach(function (t) {
+      var s = subjectById(t.subjectId);
+      var b = band(t.pct);
+      var scope = t.topicIds.length ? (t.topicIds.length + " topic" + (t.topicIds.length > 1 ? "s" : "")) : "Whole subject";
+      var row = el('<div class="test-row">' +
+        '<div class="ti"><div class="tt">' + esc(t.name) + '</div>' +
+        '<div class="td">' + esc(s ? s.name : "—") + ' · ' + fmtDate(t.date) + ' · ' + scope +
+        (t.note ? ' · ' + esc(t.note) : "") + '</div></div>' +
+        '<span class="score-pill" style="color:' + b.color + '">' + t.pct + '%</span>' +
+        (t.grade ? '<span class="chip grade">Grade ' + esc(t.grade) + '</span>' : "") +
+        '</div>');
+      var edit = el('<button class="btn sm ghost">Edit</button>');
+      var del = el('<button class="btn sm ghost del">✕</button>');
+      edit.addEventListener("click", function () { openTestModal(t); });
+      del.addEventListener("click", function () {
+        state.tests = state.tests.filter(function (x) { return x.id !== t.id; }); save(); render();
+      });
+      row.appendChild(edit); row.appendChild(del);
+      card.appendChild(row);
+    });
+  }
+  root.appendChild(card);
+}
+
+/* ---------------- Modals ---------------- */
+function openModal(node) {
+  var mr = document.getElementById("modalRoot");
+  mr.innerHTML = "";
+  var overlay = el('<div class="overlay"></div>');
+  overlay.appendChild(node);
+  overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) closeModal(); });
+  mr.appendChild(overlay);
+  var first = node.querySelector("input, select, textarea, button");
+  if (first) first.focus();
+  document.addEventListener("keydown", escClose);
+}
+function escClose(e) { if (e.key === "Escape") closeModal(); }
+function closeModal() { document.getElementById("modalRoot").innerHTML = ""; document.removeEventListener("keydown", escClose); }
+
+function confirmModal(title, body, onYes) {
+  var m = el('<div class="modal"><div class="m-body"><h3>' + esc(title) + '</h3>' +
+    '<p class="muted" style="font-size:.9rem">' + esc(body) + '</p></div>' +
+    '<div class="m-foot"></div></div>');
+  var foot = m.querySelector(".m-foot");
+  if (onYes) {
+    var cancel = el('<button class="btn ghost">Cancel</button>');
+    cancel.addEventListener("click", closeModal);
+    var yes = el('<button class="btn primary">Confirm</button>');
+    yes.addEventListener("click", function () { closeModal(); onYes(); });
+    foot.appendChild(cancel); foot.appendChild(yes);
+  } else {
+    var ok = el('<button class="btn primary">OK</button>');
+    ok.addEventListener("click", closeModal);
+    foot.appendChild(ok);
+  }
+  openModal(m);
+}
+
+function openSubjectModal(subject) {
+  var isNew = !subject;
+  var s = subject || { name: "", board: "", target: "" };
+  var m = el('<div class="modal"><div class="m-body">' +
+    '<h3>' + (isNew ? "Add subject" : "Edit subject") + '</h3>' +
+    '<label class="f"><span>Subject name</span><input id="s_name" value="' + esc(s.name) + '" placeholder="e.g. Geography"></label>' +
+    '<div class="row2">' +
+      '<label class="f"><span>Exam board</span><input id="s_board" value="' + esc(s.board) + '" placeholder="AQA, Edexcel…"></label>' +
+      '<label class="f"><span>Target grade</span><input id="s_target" value="' + esc(s.target) + '" placeholder="e.g. 6"></label>' +
+    '</div>' +
+    '<p class="hint">You can add topics and sub-topics after saving.</p>' +
+    '</div><div class="m-foot"></div></div>');
+  var foot = m.querySelector(".m-foot");
+  var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
+  var savb = el('<button class="btn primary">Save</button>');
+  savb.addEventListener("click", function () {
+    var name = m.querySelector("#s_name").value.trim(); if (!name) { m.querySelector("#s_name").focus(); return; }
+    var board = m.querySelector("#s_board").value.trim();
+    var target = m.querySelector("#s_target").value.trim();
+    if (isNew) { state.subjects.push({ id: uid(), name: name, board: board, target: target, topics: [] }); }
+    else { s.name = name; s.board = board; s.target = target; }
+    save(); closeModal(); render();
+  });
+  foot.appendChild(cancel); foot.appendChild(savb);
+  openModal(m);
+}
+
+function openTopicModal(subject, topic) {
+  var isNew = !topic;
+  var m = el('<div class="modal"><div class="m-body">' +
+    '<h3>' + (isNew ? "Add topic" : "Rename topic") + '</h3>' +
+    '<label class="f"><span>Topic name</span><input id="t_name" value="' + esc(isNew ? "" : topic.name) + '" placeholder="e.g. Algebra"></label>' +
+    '</div><div class="m-foot"></div></div>');
+  var foot = m.querySelector(".m-foot");
+  var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
+  var savb = el('<button class="btn primary">Save</button>');
+  savb.addEventListener("click", function () {
+    var name = m.querySelector("#t_name").value.trim(); if (!name) return;
+    if (isNew) subject.topics.push({ id: uid(), name: name, subtopics: [] });
+    else topic.name = name;
+    save(); closeModal(); render();
+  });
+  foot.appendChild(cancel); foot.appendChild(savb);
+  openModal(m);
+}
+
+function openSubtopicModal(topic) {
+  var m = el('<div class="modal"><div class="m-body">' +
+    '<h3>Add sub-topic</h3>' +
+    '<label class="f"><span>Sub-topic name</span><input id="st_name" placeholder="e.g. Circle theorems"></label>' +
+    '<label class="f"><span>How secure is he right now?</span></label>' +
+    '<div class="rag" id="st_rag" role="group" style="margin-top:4px"></div>' +
+    '</div><div class="m-foot"></div></div>');
+  var chosen = 1;
+  var rag = m.querySelector("#st_rag");
+  RAG_LEVELS.forEach(function (lvl, i) {
+    var b = el('<button class="' + lvl.cls + '" aria-pressed="' + (i === chosen) + '">' + lvl.label + '</button>');
+    b.addEventListener("click", function () {
+      chosen = i;
+      rag.querySelectorAll("button").forEach(function (x, j) { x.setAttribute("aria-pressed", String(j === i)); });
+    });
+    rag.appendChild(b);
+  });
+  var foot = m.querySelector(".m-foot");
+  var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
+  var savb = el('<button class="btn primary">Add</button>');
+  savb.addEventListener("click", function () {
+    var name = m.querySelector("#st_name").value.trim(); if (!name) return;
+    topic.subtopics.push({ id: uid(), name: name, confidence: RAG_LEVELS[chosen].v });
+    save(); closeModal(); render();
+  });
+  foot.appendChild(cancel); foot.appendChild(savb);
+  openModal(m);
+}
+
+function openTestModal(test) {
+  var isNew = !test;
+  var t = test || { subjectId: state.subjects[0].id, name: "", date: new Date().toISOString().slice(0, 10),
+                    pct: "", grade: "", topicIds: [], note: "" };
+  var subjOpts = state.subjects.map(function (s) {
+    return '<option value="' + s.id + '"' + (s.id === t.subjectId ? " selected" : "") + '>' + esc(s.name) + '</option>';
+  }).join("");
+  var m = el('<div class="modal"><div class="m-body">' +
+    '<h3>' + (isNew ? "Log a test" : "Edit test") + '</h3>' +
+    '<label class="f"><span>Subject</span><select id="te_subj">' + subjOpts + '</select></label>' +
+    '<label class="f"><span>Test name</span><input id="te_name" value="' + esc(t.name) + '" placeholder="e.g. Autumn mock — Paper 1"></label>' +
+    '<div class="row2">' +
+      '<label class="f"><span>Date</span><input id="te_date" type="date" value="' + esc(t.date) + '"></label>' +
+      '<label class="f"><span>Score (%)</span><input id="te_pct" type="number" min="0" max="100" value="' + esc(t.pct) + '" placeholder="0–100"></label>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<label class="f"><span>Grade (optional)</span><input id="te_grade" value="' + esc(t.grade) + '" placeholder="e.g. 5"></label>' +
+      '<label class="f"><span>Note (optional)</span><input id="te_note" value="' + esc(t.note) + '" placeholder="mock, class test…"></label>' +
+    '</div>' +
+    '<label class="f"><span>Which topics did it cover? <span class="muted">(leave all unticked for a whole-subject test)</span></span></label>' +
+    '<div class="checks" id="te_topics"></div>' +
+    '</div><div class="m-foot"></div></div>');
+
+  function fillTopics() {
+    var box = m.querySelector("#te_topics");
+    var sid = m.querySelector("#te_subj").value;
+    var s = subjectById(sid);
+    box.innerHTML = "";
+    if (!s || !s.topics.length) { box.appendChild(el('<span class="muted" style="font-size:.82rem">No topics in this subject yet.</span>')); return; }
+    s.topics.forEach(function (tp) {
+      var checked = t.topicIds.indexOf(tp.id) >= 0 ? " checked" : "";
+      box.appendChild(el('<label><input type="checkbox" value="' + tp.id + '"' + checked + '> ' + esc(tp.name) + '</label>'));
+    });
+  }
+  m.querySelector("#te_subj").addEventListener("change", function () { t.topicIds = []; fillTopics(); });
+  fillTopics();
+
+  var foot = m.querySelector(".m-foot");
+  var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
+  var savb = el('<button class="btn primary">Save</button>');
+  savb.addEventListener("click", function () {
+    var name = m.querySelector("#te_name").value.trim();
+    var pctRaw = m.querySelector("#te_pct").value;
+    if (!name) { m.querySelector("#te_name").focus(); return; }
+    if (pctRaw === "") { m.querySelector("#te_pct").focus(); return; }
+    var pct = Math.max(0, Math.min(100, Math.round(parseFloat(pctRaw))));
+    var topicIds = Array.prototype.slice.call(m.querySelectorAll("#te_topics input:checked")).map(function (c) { return c.value; });
+    var data = {
+      subjectId: m.querySelector("#te_subj").value,
+      name: name,
+      date: m.querySelector("#te_date").value || new Date().toISOString().slice(0, 10),
+      pct: pct,
+      grade: m.querySelector("#te_grade").value.trim(),
+      note: m.querySelector("#te_note").value.trim(),
+      topicIds: topicIds
+    };
+    if (isNew) { data.id = uid(); state.tests.push(data); }
+    else { Object.assign(t, data); }
+    save(); closeModal(); render();
+  });
+  foot.appendChild(cancel); foot.appendChild(savb);
+  openModal(m);
+}
+
+function openStudentModal() {
+  var s = state.student;
+  var targetRows = state.subjects.map(function (sub) {
+    return '<div class="sub-row" style="margin:8px 0"><span class="sn">' + esc(sub.name) + '</span>' +
+      '<input class="tg-input" data-sid="' + sub.id + '" value="' + esc(sub.target) + '" placeholder="—" ' +
+      'style="width:64px;text-align:center" aria-label="Target grade for ' + esc(sub.name) + '"></div>';
+  }).join("");
+  var m = el('<div class="modal"><div class="m-body">' +
+    '<h3>Profile</h3>' +
+    '<p class="hint" style="margin-top:2px">Who you\'re tracking, and the grade he\'s aiming for in each subject.</p>' +
+    '<label class="f"><span>Student name</span><input id="stu_name" value="' + esc(s.name) + '"></label>' +
+    '<div class="row2">' +
+      '<label class="f"><span>Year group</span><input id="stu_year" value="' + esc(s.year) + '" placeholder="Year 11"></label>' +
+      '<label class="f"><span>Exam season</span><input id="stu_season" value="' + esc(s.season) + '" placeholder="Summer 2026"></label>' +
+    '</div>' +
+    '<label class="f" style="margin-top:20px"><span>Target grades (9–1)</span></label>' +
+    (state.subjects.length ? '<div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px">' + targetRows + '</div>'
+      : '<p class="muted" style="font-size:.85rem">Add subjects first (Subjects tab), then set their target grades here.</p>') +
+    '<hr style="border:none;border-top:1px solid var(--line);margin:22px 0 0">' +
+    '<button class="btn sm ghost del" id="stu_reset" style="margin-top:14px">Reset all data to sample</button>' +
+    '<p class="hint">This wipes everything and reloads the sample subjects and tests.</p>' +
+    '</div><div class="m-foot"></div></div>');
+  m.querySelector("#stu_reset").addEventListener("click", function () {
+    closeModal();
+    confirmModal("Reset everything?", "All subjects, scores and tests will be replaced with the sample data.", function () {
+      state = attachSeedTests(seed()); save(); render();
+    });
+  });
+  var foot = m.querySelector(".m-foot");
+  var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
+  var savb = el('<button class="btn primary">Save</button>');
+  savb.addEventListener("click", function () {
+    s.name = m.querySelector("#stu_name").value.trim() || "Student";
+    s.year = m.querySelector("#stu_year").value.trim();
+    s.season = m.querySelector("#stu_season").value.trim();
+    m.querySelectorAll(".tg-input").forEach(function (inp) {
+      var sub = subjectById(inp.getAttribute("data-sid"));
+      if (sub) sub.target = inp.value.trim();
+    });
+    save(); closeModal(); render();
+  });
+  foot.appendChild(cancel); foot.appendChild(savb);
+  openModal(m);
+}
+
+/* ---------------- App shell ---------------- */
+var currentView = "dashboard";
+function render() {
+  document.getElementById("studentLine").textContent =
+    (state.student.name.split(" ")[0] || "GCSE") + " · " + (state.student.year || "GCSE");
+  var root = document.getElementById("app");
+  root.innerHTML = "";
+  if (currentView === "dashboard") renderDashboard(root);
+  else if (currentView === "subjects") renderSubjects(root);
+  else renderTests(root);
+}
+
+document.querySelectorAll("nav.tabs button").forEach(function (b) {
+  b.addEventListener("click", function () {
+    currentView = b.getAttribute("data-view");
+    document.querySelectorAll("nav.tabs button").forEach(function (x) {
+      x.setAttribute("aria-selected", String(x === b));
+    });
+    window.scrollTo(0, 0);
+    render();
+  });
+});
+document.getElementById("editStudent").addEventListener("click", openStudentModal);
+
+/* Theme toggle: cycle system → light → dark */
+var themeOrder = [null, "light", "dark"];
+function currentThemeIndex() {
+  var t = document.documentElement.getAttribute("data-theme");
+  return themeOrder.indexOf(t);
+}
+document.getElementById("themeToggle").addEventListener("click", function () {
+  var next = themeOrder[(currentThemeIndex() + 1) % themeOrder.length];
+  if (next) document.documentElement.setAttribute("data-theme", next);
+  else document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem(KEY + ".theme", next || ""); } catch (e) {}
+});
+(function () {
+  try { var t = localStorage.getItem(KEY + ".theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+})();
+
+/* Boot */
+state = load();
+if (!state || !state.subjects) { state = attachSeedTests(seed()); save(); }
+render();
+</script>
+</body>
+</html>
