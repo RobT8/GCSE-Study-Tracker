@@ -351,6 +351,138 @@ function attachSeedTests(s) {
   return s;
 }
 
+/* ---------------- Curriculum library ----------------
+   Starting-point topic/sub-topic lists per subject. Content is broadly the
+   same across boards at GCSE, so these are board-agnostic starting points —
+   everything is fully editable after it's added. */
+var CURRICULA = [
+  { label: "Mathematics", aliases: ["maths", "mathematics"], topics: [
+    ["Number", ["Integers & place value", "Fractions, decimals & percentages", "Powers, roots & indices", "Standard form", "Surds", "Rounding & bounds"]],
+    ["Algebra", ["Expressions & simplifying", "Equations & inequalities", "Sequences", "Quadratics", "Simultaneous equations", "Graphs of functions"]],
+    ["Ratio, proportion & rates of change", ["Ratio", "Direct & inverse proportion", "Percentage change", "Compound measures", "Growth & decay"]],
+    ["Geometry & measures", ["Angles & polygons", "Circle theorems", "Pythagoras & trigonometry", "Transformations", "Area, surface area & volume", "Vectors"]],
+    ["Probability", ["Basic probability", "Tree diagrams", "Venn diagrams & set notation"]],
+    ["Statistics", ["Sampling & averages", "Charts & diagrams", "Cumulative frequency & box plots", "Scatter graphs & correlation"]]
+  ]},
+  { label: "Biology", aliases: ["biology", "combined science biology"], topics: [
+    ["Cell biology", ["Cell structure", "Cell division", "Transport in cells"]],
+    ["Organisation", ["Digestion & enzymes", "The heart & blood vessels", "Plant tissues & transport", "Health & disease"]],
+    ["Infection & response", ["Communicable diseases", "The immune system", "Vaccination & drugs"]],
+    ["Bioenergetics", ["Photosynthesis", "Respiration"]],
+    ["Homeostasis & response", ["The nervous system", "Hormones & the endocrine system", "Hormones in reproduction"]],
+    ["Inheritance, variation & evolution", ["Reproduction & DNA", "Genetic inheritance", "Variation & evolution", "Classification"]],
+    ["Ecology", ["Adaptations & interdependence", "Organisation of ecosystems", "Biodiversity & human impact"]]
+  ]},
+  { label: "Chemistry", aliases: ["chemistry", "combined science chemistry"], topics: [
+    ["Atomic structure & the periodic table", ["Atoms, elements & compounds", "Structure of the atom", "The periodic table"]],
+    ["Bonding, structure & properties", ["Ionic bonding", "Covalent bonding", "Metallic bonding", "States of matter"]],
+    ["Quantitative chemistry", ["Conservation of mass", "Moles & calculations", "Concentration of solutions"]],
+    ["Chemical changes", ["Reactivity of metals", "Acids, bases & salts", "Electrolysis"]],
+    ["Energy changes", ["Exothermic & endothermic reactions", "Reaction profiles"]],
+    ["Rate & extent of chemical change", ["Rates of reaction", "Reversible reactions & equilibrium"]],
+    ["Organic chemistry", ["Crude oil & hydrocarbons", "Alkenes, alcohols & polymers"]],
+    ["Chemical analysis", ["Purity & formulations", "Chromatography", "Tests for gases & ions"]],
+    ["Chemistry of the atmosphere", ["Evolution of the atmosphere", "Greenhouse gases & climate change"]],
+    ["Using resources", ["Potable water", "Life-cycle assessment & recycling"]]
+  ]},
+  { label: "Physics", aliases: ["physics", "combined science physics"], topics: [
+    ["Energy", ["Energy stores & transfers", "Efficiency", "Energy resources"]],
+    ["Electricity", ["Circuits & I–V characteristics", "Series & parallel circuits", "Mains electricity & power"]],
+    ["Particle model of matter", ["Density", "Internal energy & changes of state", "Gas pressure"]],
+    ["Atomic structure", ["The atom & isotopes", "Radioactive decay", "Nuclear radiation & half-life"]],
+    ["Forces", ["Scalars & vectors", "Forces & motion", "Newton's laws", "Stopping distances", "Momentum"]],
+    ["Waves", ["Properties of waves", "The electromagnetic spectrum", "Reflection & refraction"]],
+    ["Magnetism & electromagnetism", ["Magnets & magnetic fields", "The motor effect", "Induction & transformers"]],
+    ["Space physics", ["The solar system", "Life cycle of stars", "Red-shift"]]
+  ]},
+  { label: "English Language", aliases: ["english language"], topics: [
+    ["Reading — fiction", ["Explicit & implicit ideas", "Language analysis", "Structure analysis", "Evaluating texts"]],
+    ["Writing — creative", ["Descriptive writing", "Narrative writing", "Technical accuracy (SPaG)"]],
+    ["Reading — non-fiction", ["Comparing viewpoints", "Persuasive techniques", "Summary & synthesis"]],
+    ["Writing — viewpoint", ["Writing to argue / persuade", "Letters, articles & speeches", "Structuring an argument"]],
+    ["Spoken language", ["Presentation & delivery", "Responding to questions"]]
+  ]},
+  { label: "English Literature", aliases: ["english literature", "english lit"], topics: [
+    ["Shakespeare play", ["Plot & structure", "Characterisation", "Themes & context", "Key quotations"]],
+    ["19th-century novel", ["Plot & structure", "Characterisation", "Themes & context", "Key quotations"]],
+    ["Modern text", ["Plot & structure", "Characterisation", "Themes & context", "Key quotations"]],
+    ["Poetry anthology", ["Individual poems", "Comparing poems", "Methods & context"]],
+    ["Unseen poetry", ["Analysing an unseen poem", "Comparing unseen poems"]]
+  ]},
+  { label: "Geography", aliases: ["geography"], topics: [
+    ["The challenge of natural hazards", ["Tectonic hazards", "Weather hazards", "Climate change"]],
+    ["The living world", ["Ecosystems", "Tropical rainforests", "Hot deserts / cold environments"]],
+    ["Physical landscapes in the UK", ["Coasts", "Rivers", "Glaciation"]],
+    ["Urban issues & challenges", ["Global urban change", "A major UK city", "Sustainable urban living"]],
+    ["The changing economic world", ["The development gap", "A newly-emerging economy", "The UK economy"]],
+    ["Resource management", ["Food, water & energy overview", "Chosen resource option"]],
+    ["Geographical applications & skills", ["Issue evaluation", "Fieldwork", "Cartographic & numerical skills"]]
+  ]},
+  { label: "History", aliases: ["history"], topics: [
+    ["Period study", ["Key developments", "Key individuals", "Cause & consequence"]],
+    ["Wider world depth study", ["Key events", "Conflict & tension", "Interpretations"]],
+    ["Thematic study", ["Change over time", "Factors driving change"]],
+    ["British depth study", ["Key events", "Historic environment (site study)"]]
+  ]},
+  { label: "Computer Science", aliases: ["computer science", "computing"], topics: [
+    ["Computational thinking & programming", ["Algorithms", "Programming fundamentals", "Data types & structures", "Subroutines", "Testing & debugging"]],
+    ["Data representation", ["Binary & hexadecimal", "Representing text, images & sound", "Data compression"]],
+    ["Computer systems", ["Hardware & the CPU", "Memory & storage", "Software & operating systems"]],
+    ["Networks", ["Network types & topologies", "Protocols & layers", "Network security"]],
+    ["Impacts of technology", ["Cyber security", "Ethical, legal & environmental issues"]]
+  ]},
+  { label: "French", aliases: ["french"], topics: [
+    ["Identity & culture", ["Me, family & friends", "Technology in everyday life", "Free-time activities", "Customs & festivals"]],
+    ["Local, national & global areas of interest", ["Home, town & region", "Social issues", "Global issues (environment)", "Travel & tourism"]],
+    ["Current & future study & employment", ["School & education", "Future aspirations", "Jobs & career choices"]],
+    ["Skills", ["Listening", "Speaking", "Reading", "Writing & translation", "Grammar"]]
+  ]},
+  { label: "Spanish", aliases: ["spanish"], topics: [
+    ["Identity & culture", ["Me, family & friends", "Technology in everyday life", "Free-time activities", "Customs & festivals"]],
+    ["Local, national & global areas of interest", ["Home, town & region", "Social issues", "Global issues (environment)", "Travel & tourism"]],
+    ["Current & future study & employment", ["School & education", "Future aspirations", "Jobs & career choices"]],
+    ["Skills", ["Listening", "Speaking", "Reading", "Writing & translation", "Grammar"]]
+  ]},
+  { label: "Religious Studies", aliases: ["religious studies", "re", "rs"], topics: [
+    ["Beliefs & teachings — Religion 1", ["Key beliefs", "Practices & worship"]],
+    ["Beliefs & teachings — Religion 2", ["Key beliefs", "Practices & worship"]],
+    ["Thematic studies", ["Relationships & families", "Religion & life", "Peace & conflict", "Crime & punishment", "Human rights"]]
+  ]},
+  { label: "Business", aliases: ["business", "business studies"], topics: [
+    ["Business in the real world", ["Purpose & nature of business", "Ownership structures", "Aims & objectives"]],
+    ["Marketing", ["Market research", "The marketing mix (4 Ps)", "Segmentation"]],
+    ["Finance", ["Sources of finance", "Costs, revenue & profit", "Break-even & cash flow"]],
+    ["People", ["Organisational structures", "Recruitment & training", "Motivation"]],
+    ["Operations", ["Production processes", "Quality", "Supply chain & stock"]]
+  ]}
+];
+
+/* Find a curriculum by subject name — exact alias first, then substring. */
+function findCurriculum(name) {
+  var n = normalize(name);
+  if (!n) return null;
+  for (var i = 0; i < CURRICULA.length; i++) {
+    for (var j = 0; j < CURRICULA[i].aliases.length; j++) {
+      if (n === normalize(CURRICULA[i].aliases[j])) return CURRICULA[i];
+    }
+  }
+  for (var a = 0; a < CURRICULA.length; a++) {
+    for (var b = 0; b < CURRICULA[a].aliases.length; b++) {
+      var al = normalize(CURRICULA[a].aliases[b]);
+      if (al.length >= 4 && n.indexOf(al) >= 0) return CURRICULA[a];
+    }
+  }
+  return null;
+}
+/* Build fresh topic objects from a curriculum entry. */
+function curriculumTopics(c) {
+  return c.topics.map(function (t) {
+    return { id: uid(), name: t[0], subtopics: t[1].map(function (sn) {
+      return { id: uid(), name: sn, confidence: 40, questions: [], attempts: [] };
+    }) };
+  });
+}
+
 /* ---------------- Scoring ---------------- */
 /* Mastery bands */
 function band(score) {
@@ -1057,15 +1189,35 @@ function confirmModal(title, body, onYes) {
 function openSubjectModal(subject) {
   var isNew = !subject;
   var s = subject || { name: "", board: "", target: "" };
+  var datalist = isNew ? '<datalist id="curr_list">' +
+    CURRICULA.map(function (c) { return '<option value="' + esc(c.label) + '"></option>'; }).join("") + '</datalist>' : "";
   var m = el('<div class="modal"><div class="m-body">' +
     '<h3>' + (isNew ? "Add subject" : "Edit subject") + '</h3>' +
-    '<label class="f"><span>Subject name</span><input id="s_name" value="' + esc(s.name) + '" placeholder="e.g. Geography"></label>' +
+    '<label class="f"><span>Subject name</span><input id="s_name" ' + (isNew ? 'list="curr_list" autocomplete="off" ' : "") + 'value="' + esc(s.name) + '" placeholder="Start typing, e.g. Geography"></label>' + datalist +
     '<div class="row2">' +
       '<label class="f"><span>Exam board</span><input id="s_board" value="' + esc(s.board) + '" placeholder="AQA, Edexcel…"></label>' +
       '<label class="f"><span>Target grade</span><input id="s_target" value="' + esc(s.target) + '" placeholder="e.g. 6"></label>' +
     '</div>' +
-    '<p class="hint">You can add topics and sub-topics after saving.</p>' +
+    '<div id="s_curr"></div>' +
     '</div><div class="m-foot"></div></div>');
+
+  function refreshCurr() {
+    var box = m.querySelector("#s_curr");
+    if (!isNew) { box.innerHTML = ""; return; }
+    var c = findCurriculum(m.querySelector("#s_name").value.trim());
+    if (c) {
+      var subs = c.topics.reduce(function (a, t) { return a + t[1].length; }, 0);
+      box.innerHTML = '<label style="display:flex;align-items:flex-start;gap:9px;margin-top:14px;font-size:.85rem;' +
+        'color:var(--accent-ink);background:var(--accent-soft);padding:11px 13px;border-radius:10px;cursor:pointer">' +
+        '<input type="checkbox" id="s_autofill" checked style="width:auto;flex:none;margin-top:2px">' +
+        '<span>Auto-fill the standard <b>' + esc(c.label) + '</b> curriculum — ' + c.topics.length + ' topics, ' + subs +
+        ' sub-topics. You can edit, add or remove anything afterwards.</span></label>';
+    } else {
+      box.innerHTML = '<p class="hint" style="margin-top:14px">No preset topic list for this subject yet — you can add topics yourself after saving.</p>';
+    }
+  }
+  if (isNew) { m.querySelector("#s_name").addEventListener("input", refreshCurr); refreshCurr(); }
+
   var foot = m.querySelector(".m-foot");
   var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
   var savb = el('<button class="btn primary">Save</button>');
@@ -1073,8 +1225,12 @@ function openSubjectModal(subject) {
     var name = m.querySelector("#s_name").value.trim(); if (!name) { m.querySelector("#s_name").focus(); return; }
     var board = m.querySelector("#s_board").value.trim();
     var target = m.querySelector("#s_target").value.trim();
-    if (isNew) { state.subjects.push({ id: uid(), name: name, board: board, target: target, topics: [] }); }
-    else { s.name = name; s.board = board; s.target = target; }
+    if (isNew) {
+      var topics = [];
+      var chk = m.querySelector("#s_autofill");
+      if (chk && chk.checked) { var c = findCurriculum(name); if (c) topics = curriculumTopics(c); }
+      state.subjects.push({ id: uid(), name: name, board: board, target: target, topics: topics });
+    } else { s.name = name; s.board = board; s.target = target; }
     save(); closeModal(); render();
   });
   foot.appendChild(cancel); foot.appendChild(savb);
