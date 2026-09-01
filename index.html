@@ -359,6 +359,11 @@ function attachSeedTests(s) {
   return s;
 }
 
+/* A fresh, empty tracker for new accounts. */
+function emptyState() {
+  return { student: { name: "My child", year: "Year 11", season: "Summer 2026" }, subjects: [], tests: [] };
+}
+
 /* ---------------- Curriculum library ----------------
    Starting-point topic/sub-topic lists per subject. Content is broadly the
    same across boards at GCSE, so these are board-agnostic starting points —
@@ -1484,8 +1489,8 @@ function openStudentModal() {
     '<hr style="border:none;border-top:1px solid var(--line);margin:22px 0 0">' +
     '<button class="btn sm ghost" id="stu_resetprog" style="margin-top:14px">Reset all progress to “Not started”</button>' +
     '<p class="hint">Sets every sub-topic back to Not started yet — keeps your subjects, topics, questions and test results.</p>' +
-    '<button class="btn sm ghost del" id="stu_reset" style="margin-top:8px">Reset all data to sample</button>' +
-    '<p class="hint">This wipes everything and reloads the sample subjects and tests.</p>' +
+    '<button class="btn sm ghost del" id="stu_clear" style="margin-top:8px">Clear everything (start fresh)</button>' +
+    '<p class="hint">Removes all subjects, topics, questions and test results, leaving an empty tracker.</p>' +
     '</div><div class="m-foot"></div></div>');
   m.querySelector("#stu_resetprog").addEventListener("click", function () {
     closeModal();
@@ -1493,10 +1498,10 @@ function openStudentModal() {
       resetAllProgress();
     });
   });
-  m.querySelector("#stu_reset").addEventListener("click", function () {
+  m.querySelector("#stu_clear").addEventListener("click", function () {
     closeModal();
-    confirmModal("Reset everything?", "All subjects, scores and tests will be replaced with the sample data.", function () {
-      state = attachSeedTests(seed()); save(); render();
+    confirmModal("Clear everything?", "This removes all subjects, topics, questions and test results, leaving an empty tracker. This cannot be undone.", function () {
+      state.subjects = []; state.tests = []; save(); render();
     });
   });
   var foot = m.querySelector(".m-foot");
@@ -1648,12 +1653,12 @@ function loadCloud() {
       // First time on this account — migrate a Phase-1 local copy if present, else seed.
       var legacy = null;
       try { var r = localStorage.getItem(KEY); if (r) legacy = JSON.parse(r); } catch (e) {}
-      state = (legacy && legacy.subjects) ? legacy : (readCache() || attachSeedTests(seed()));
+      state = (legacy && legacy.subjects) ? legacy : (readCache() || emptyState());
       writeCache(); pushCloud();   // create the cloud row
     })
     .catch(function () {
       // Offline / error — fall back to this device's cache (or seed) and sync later.
-      state = readCache() || attachSeedTests(seed());
+      state = readCache() || emptyState();
       setSync("offline");
     });
 }
