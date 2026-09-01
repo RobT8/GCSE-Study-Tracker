@@ -234,6 +234,7 @@
     <button role="tab" aria-selected="true" data-view="dashboard">Dashboard</button>
     <button role="tab" aria-selected="false" data-view="subjects">Subjects</button>
     <button role="tab" aria-selected="false" data-view="tests">Tests</button>
+    <button role="tab" aria-selected="false" data-view="practise">Practise</button>
   </nav>
 </header>
 
@@ -294,26 +295,41 @@ function pushCloud() {
 
 /* ---------------- Seed data ---------------- */
 function seed() {
-  function st(name, conf) { return { id: uid(), name: name, confidence: conf }; }
+  function st(name, conf, qs) { return { id: uid(), name: name, confidence: conf, questions: qs || [], attempts: [] }; }
   function tp(name, subs) { return { id: uid(), name: name, subtopics: subs }; }
+  function mc(p, opts, ai) { return { id: uid(), type: "mc", q: p, options: opts, answer: ai }; }
+  function sa(p, ans) { return { id: uid(), type: "short", q: p, answer: ans }; }
   return {
     student: { name: "Sample Student", year: "Year 11", season: "Summer 2026" },
     subjects: [
       { id: uid(), name: "Mathematics", board: "Edexcel", target: "6", topics: [
-        tp("Number", [ st("Surds & indices", 90), st("Standard form", 78), st("Fractions & percentages", 72) ]),
+        tp("Number", [ st("Surds & indices", 90, [
+            mc("Simplify √50", ["5√2", "2√5", "10√5", "25√2"], 0),
+            mc("Evaluate 3⁻²", ["-9", "-6", "1/9", "6"], 2),
+            sa("Simplify √8 in the form a√2. What is a?", "2")
+          ]), st("Standard form", 78), st("Fractions & percentages", 72) ]),
         tp("Algebra", [ st("Solving quadratics", 75), st("Simultaneous equations", 60), st("Sequences", 55) ]),
         tp("Ratio & proportion", [ st("Direct & inverse proportion", 48), st("Compound measures", 52) ]),
-        tp("Geometry & measures", [ st("Circle theorems", 30), st("Trigonometry", 42), st("Vectors", 25) ]),
+        tp("Geometry & measures", [ st("Circle theorems", 30, [
+            mc("The angle in a semicircle is…", ["45°", "60°", "90°", "180°"], 2),
+            mc("The angle at the centre is ___ the angle at the circumference on the same arc.", ["equal to", "half", "twice", "three times"], 2)
+          ]), st("Trigonometry", 42), st("Vectors", 25) ]),
         tp("Probability & statistics", [ st("Tree diagrams", 68), st("Cumulative frequency", 70) ])
       ]},
       { id: uid(), name: "Combined Science — Biology", board: "AQA", target: "5", topics: [
         tp("Cell biology", [ st("Cell structure", 80), st("Transport in cells", 72) ]),
         tp("Infection & response", [ st("Communicable diseases", 55), st("The immune system", 50) ]),
-        tp("Bioenergetics", [ st("Photosynthesis", 38), st("Respiration", 32) ]),
+        tp("Bioenergetics", [ st("Photosynthesis", 38), st("Respiration", 32, [
+            mc("Aerobic respiration mainly takes place in the…", ["nucleus", "mitochondria", "ribosome", "cell wall"], 1),
+            sa("Which acid builds up during anaerobic respiration in muscle cells?", "lactic acid")
+          ]) ]),
         tp("Homeostasis & response", [ st("The nervous system", 28), st("Hormones", 40) ])
       ]},
       { id: uid(), name: "English Literature", board: "AQA", target: "6", topics: [
-        tp("Shakespeare — Macbeth", [ st("Themes & context", 76), st("Key quotations", 70) ]),
+        tp("Shakespeare — Macbeth", [ st("Themes & context", 76), st("Key quotations", 70, [
+            sa('"Is this a ___ which I see before me?" (one word)', "dagger"),
+            mc("“Out, damned spot!” is spoken by…", ["Macbeth", "Lady Macbeth", "Banquo", "Macduff"], 1)
+          ]) ]),
         tp("19th-century novel — A Christmas Carol", [ st("Scrooge's arc", 74), st("Structure & morality", 66) ]),
         tp("Modern text — An Inspector Calls", [ st("Social responsibility", 36), st("Characters", 44) ]),
         tp("Poetry — Power & Conflict", [ st("Comparing poems", 52), st("Unseen poetry", 48) ])
@@ -363,9 +379,24 @@ function testEvidenceForTopic(subject, topicId) {
   return wsum ? vsum / wsum : null;
 }
 
+/* Recency-weighted quiz score (0-100) for a sub-topic, from its attempt log. */
+function subtopicQuizScore(st) {
+  var a = st.attempts || [];
+  if (!a.length) return null;
+  var recent = a.slice(-12);
+  var wsum = 0, vsum = 0;
+  recent.forEach(function (att, i) { var w = i + 1; wsum += w; vsum += w * (att.c ? 100 : 0); });
+  return wsum ? vsum / wsum : null;
+}
+/* A sub-topic's working score: self-rating, refined by app-quiz evidence. */
+function subtopicScore(st) {
+  var q = subtopicQuizScore(st);
+  if (q === null) return st.confidence;
+  return Math.round(st.confidence * 0.4 + q * 0.6);
+}
 function topicSelfScore(topic) {
   if (!topic.subtopics.length) return 0;
-  var sum = topic.subtopics.reduce(function (a, s) { return a + s.confidence; }, 0);
+  var sum = topic.subtopics.reduce(function (a, s) { return a + subtopicScore(s); }, 0);
   return sum / topic.subtopics.length;
 }
 
@@ -594,11 +625,13 @@ function renderSubjects(root) {
           });
           rag.appendChild(b);
         });
+        var qBtn = el('<button class="btn sm ghost" title="Practice questions for this sub-topic">Qs&nbsp;' + ((st.questions || []).length) + '</button>');
+        qBtn.addEventListener("click", function () { openQuestionsModal(st); });
         var delS = el('<button class="btn sm ghost del" title="Remove sub-topic">✕</button>');
         delS.addEventListener("click", function () {
           t.subtopics = t.subtopics.filter(function (x) { return x.id !== st.id; }); save(); render();
         });
-        row.appendChild(rag); row.appendChild(delS);
+        row.appendChild(rag); row.appendChild(qBtn); row.appendChild(delS);
         subs.appendChild(row);
       });
       if (!t.subtopics.length) subs.appendChild(el('<span class="muted" style="font-size:.82rem">No sub-topics yet.</span>'));
@@ -681,6 +714,310 @@ function renderTests(root) {
     });
   }
   root.appendChild(card);
+}
+
+/* ---------------- Practise (quiz engine) ---------------- */
+var quiz = null;        // active quiz session
+var quizResult = null;  // last quiz summary
+
+function normalize(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+
+/* Flatten all questions in scope, each tagged with its sub-topic + context. */
+function allQuestions(scopeSubjectId) {
+  var out = [];
+  state.subjects.forEach(function (s) {
+    if (scopeSubjectId && s.id !== scopeSubjectId) return;
+    s.topics.forEach(function (t) {
+      t.subtopics.forEach(function (st) {
+        (st.questions || []).forEach(function (q) {
+          out.push({ q: q, st: st, topicName: t.name, subjectName: s.name });
+        });
+      });
+    });
+  });
+  return out;
+}
+
+/* Choose n questions. Smart mode over-samples weak / rarely-practised sub-topics. */
+function pickQuestions(pool, n, smart) {
+  if (!smart) return shuffle(pool.slice()).slice(0, n);
+  var weighted = [];
+  pool.forEach(function (item) {
+    var score = subtopicScore(item.st);
+    var tries = (item.st.attempts || []).length;
+    var weight = (100 - score) + 20 + Math.max(0, 8 - tries) * 5;  // weakness + novelty + floor
+    var copies = Math.max(1, Math.round(weight / 15));
+    for (var i = 0; i < copies; i++) weighted.push(item);
+  });
+  shuffle(weighted);
+  var seen = {}, chosen = [];
+  for (var k = 0; k < weighted.length && chosen.length < n; k++) {
+    var it = weighted[k];
+    if (seen[it.q.id]) continue;
+    seen[it.q.id] = 1; chosen.push(it);
+  }
+  return chosen;
+}
+
+function renderPractise(root) {
+  root.appendChild(el('<div class="view-head"><div>' +
+    '<span class="eyebrow">Test his knowledge</span>' +
+    '<h2>Practise</h2>' +
+    '<p>Short, auto-marked quizzes that update his mastery — weak areas come up more often.</p>' +
+    '</div></div>'));
+
+  if (quiz) { renderQuizRunner(root); return; }
+  if (quizResult) { renderQuizResult(root); return; }
+
+  var total = allQuestions(null).length;
+  if (!total) {
+    root.appendChild(el('<div class="card"><div class="empty"><div class="big">🧠</div>' +
+      'No practice questions yet.<br>Add some via the <b>Qs</b> button on any sub-topic in the ' +
+      '<b>Subjects</b> tab — or use <b>Profile → Reset all data to sample</b> to load a few starter questions.' +
+      '</div></div>'));
+    return;
+  }
+
+  var card = el('<div class="card pad"></div>');
+  card.appendChild(el('<h3 style="font-size:1.05rem;margin-bottom:14px">Start a quiz</h3>'));
+
+  var focusL = el('<label class="f"><span>Focus</span></label>');
+  var scopeSel = el('<select></select>');
+  scopeSel.appendChild(el('<option value="">Smart mix — weak areas first</option>'));
+  state.subjects.forEach(function (s) {
+    if (allQuestions(s.id).length) { var o = el('<option></option>'); o.value = s.id; o.textContent = s.name + " (" + allQuestions(s.id).length + ")"; scopeSel.appendChild(o); }
+  });
+  focusL.appendChild(scopeSel);
+
+  var lenL = el('<label class="f"><span>Length</span></label>');
+  var lenSel = el('<select><option value="5">5 questions</option><option value="8" selected>8 questions</option><option value="12">12 questions</option></select>');
+  lenL.appendChild(lenSel);
+
+  var row = el('<div class="row2"></div>');
+  row.appendChild(focusL); row.appendChild(lenL);
+  card.appendChild(row);
+
+  var start = el('<button class="btn primary" style="margin-top:18px">Start quiz →</button>');
+  start.addEventListener("click", function () {
+    var scope = scopeSel.value || null;
+    var n = parseInt(lenSel.value, 10);
+    var pool = allQuestions(scope);
+    var picked = pickQuestions(pool, Math.min(n, pool.length), !scope);
+    if (!picked.length) return;
+    quiz = { items: picked, i: 0, answers: [], current: null };
+    render();
+  });
+  card.appendChild(start);
+  root.appendChild(card);
+
+  root.appendChild(el('<p class="foot-note">Answers are marked instantly and feed his mastery scores as medium-weight evidence — below real tests, above self-rating.</p>'));
+}
+
+function renderQuizRunner(root) {
+  var item = quiz.items[quiz.i];
+  var q = item.q;
+  var card = el('<div class="card pad"></div>');
+
+  var top = el('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"></div>');
+  top.appendChild(el('<span class="muted" style="font-size:.82rem">Question ' + (quiz.i + 1) + ' of ' + quiz.items.length + '</span>'));
+  var quitB = el('<button class="btn sm ghost">End quiz</button>');
+  quitB.addEventListener("click", finishQuiz);
+  top.appendChild(quitB);
+  card.appendChild(top);
+
+  var barw = el('<div class="bar" style="width:100%;margin-bottom:18px"></div>');
+  barw.appendChild(el('<i style="width:' + Math.round(quiz.i / quiz.items.length * 100) + '%;background:var(--accent)"></i>'));
+  card.appendChild(barw);
+
+  card.appendChild(el('<div class="muted" style="font-size:.76rem;margin-bottom:4px">' + esc(item.subjectName) + ' · ' + esc(item.topicName) + '</div>'));
+  card.appendChild(el('<h3 style="font-size:1.18rem;margin-bottom:16px">' + esc(q.q) + '</h3>'));
+
+  var ans = quiz.current;   // set once answered
+  var body = el('<div></div>');
+  card.appendChild(body);
+
+  if (q.type === "mc") {
+    q.options.forEach(function (opt, idx) {
+      var b = el('<button class="btn" style="display:block;width:100%;text-align:left;margin-bottom:8px"></button>');
+      b.textContent = opt;
+      if (ans) {
+        b.disabled = true;
+        if (idx === q.answer) b.style.borderColor = "var(--g)";
+        if (idx === ans.chosen && !ans.correct) b.style.borderColor = "var(--r)";
+      } else {
+        b.addEventListener("click", function () { answerQuiz(idx === q.answer, idx, null); });
+      }
+      body.appendChild(b);
+    });
+  } else {
+    var wrap = el('<div style="display:flex;gap:8px"></div>');
+    var inp = el('<input placeholder="Type your answer" autocomplete="off">');
+    wrap.appendChild(inp);
+    var check = el('<button class="btn primary" style="flex:none">Check</button>');
+    if (ans) { inp.value = ans.text || ""; inp.disabled = true; }
+    else {
+      var submit = function () { var v = inp.value.trim(); if (!v) return; answerQuiz(normalize(v) === normalize(q.answer), null, v); };
+      check.addEventListener("click", submit);
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+      wrap.appendChild(check);
+    }
+    body.appendChild(wrap);
+  }
+
+  if (ans) {
+    var fb = el('<div class="auth-msg" style="margin-top:16px"></div>');
+    if (ans.correct) { fb.textContent = "✓ Correct"; fb.style.color = "var(--g)"; }
+    else { fb.textContent = "✗ Not quite — correct answer: " + (q.type === "mc" ? q.options[q.answer] : q.answer); fb.style.color = "var(--r)"; }
+    card.appendChild(fb);
+    var last = quiz.i + 1 >= quiz.items.length;
+    var next = el('<button class="btn primary" style="margin-top:14px">' + (last ? "See results" : "Next question →") + '</button>');
+    next.addEventListener("click", function () {
+      if (last) { finishQuiz(); }
+      else { quiz.i++; quiz.current = null; render(); }
+    });
+    card.appendChild(next);
+  }
+  root.appendChild(card);
+}
+
+function answerQuiz(correct, chosen, text) {
+  var item = quiz.items[quiz.i];
+  quiz.current = { correct: correct, chosen: chosen, text: text };
+  quiz.answers.push({ st: item.st, correct: correct });
+  item.st.attempts = item.st.attempts || [];
+  item.st.attempts.push({ t: Date.now(), c: correct ? 1 : 0 });
+  if (item.st.attempts.length > 30) item.st.attempts = item.st.attempts.slice(-30);
+  render();
+}
+
+function finishQuiz() {
+  var answered = quiz.answers;
+  var correct = answered.filter(function (a) { return a.correct; }).length;
+  // Per-subject tally for the summary.
+  var byTopic = {};
+  answered.forEach(function (a) {
+    var k = a.st.name;
+    byTopic[k] = byTopic[k] || { name: k, total: 0, correct: 0 };
+    byTopic[k].total++; if (a.correct) byTopic[k].correct++;
+  });
+  quizResult = { total: answered.length, correct: correct, breakdown: Object.keys(byTopic).map(function (k) { return byTopic[k]; }) };
+  quiz = null;
+  if (answered.length) save();   // persist attempts to the cloud
+  render();
+}
+
+function renderQuizResult(root) {
+  var r = quizResult;
+  var pct = r.total ? Math.round(r.correct / r.total * 100) : 0;
+  var b = band(pct);
+  var card = el('<div class="card pad" style="text-align:center"></div>');
+  card.appendChild(el('<div class="ring" style="margin:6px auto 14px;width:76px;height:76px;background:conic-gradient(' + b.color + ' ' + pct + '%, var(--card-2) 0)">' +
+    '<i style="width:60px;height:60px;font-size:1rem">' + pct + '%</i></div>'));
+  card.appendChild(el('<h3 style="font-size:1.3rem">' + r.correct + ' / ' + r.total + ' correct</h3>'));
+  card.appendChild(el('<p class="muted" style="font-size:.9rem;margin-top:4px">His mastery scores have been updated.</p>'));
+
+  if (r.breakdown.length) {
+    var bd = el('<div style="margin:18px auto 4px;max-width:340px;text-align:left"></div>');
+    r.breakdown.forEach(function (t) {
+      var ok = t.correct === t.total;
+      bd.appendChild(el('<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px dashed var(--line);font-size:.88rem">' +
+        '<span>' + esc(t.name) + '</span>' +
+        '<span class="mono" style="color:' + (ok ? "var(--g)" : "var(--a)") + '">' + t.correct + '/' + t.total + '</span></div>'));
+    });
+    card.appendChild(bd);
+  }
+
+  var btns = el('<div style="display:flex;gap:8px;justify-content:center;margin-top:20px"></div>');
+  var again = el('<button class="btn primary">Practise again</button>');
+  again.addEventListener("click", function () { quizResult = null; render(); });
+  var dash = el('<button class="btn ghost">Back to dashboard</button>');
+  dash.addEventListener("click", function () {
+    quizResult = null; currentView = "dashboard";
+    document.querySelectorAll("nav.tabs button").forEach(function (x) { x.setAttribute("aria-selected", String(x.getAttribute("data-view") === "dashboard")); });
+    render();
+  });
+  btns.appendChild(again); btns.appendChild(dash);
+  card.appendChild(btns);
+  root.appendChild(card);
+}
+
+/* ---------------- Question editor ---------------- */
+function openQuestionsModal(st) {
+  st.questions = st.questions || [];
+  var m = el('<div class="modal"><div class="m-body">' +
+    '<h3>Practice questions</h3>' +
+    '<p class="hint" style="margin-top:2px">' + esc(st.name) + '</p>' +
+    '<div id="q_list" style="margin-top:8px"></div>' +
+    '<hr style="border:none;border-top:1px solid var(--line);margin:18px 0 14px">' +
+    '<h4 style="font-family:Spectral,serif;font-size:1rem;margin-bottom:8px">Add a question</h4>' +
+    '<label class="f"><span>Type</span><select id="q_type"><option value="mc">Multiple choice</option><option value="short">Short answer</option></select></label>' +
+    '<label class="f"><span>Question</span><textarea id="q_prompt" rows="2" placeholder="e.g. Simplify √50"></textarea></label>' +
+    '<div id="q_mc"></div>' +
+    '<div id="q_short" hidden><label class="f"><span>Correct answer</span><input id="q_ans" placeholder="e.g. 5√2"></label></div>' +
+    '</div><div class="m-foot"></div></div>');
+
+  var listEl = m.querySelector("#q_list");
+  function drawList() {
+    listEl.innerHTML = "";
+    if (!st.questions.length) { listEl.appendChild(el('<p class="muted" style="font-size:.84rem">No questions yet.</p>')); return; }
+    st.questions.forEach(function (q) {
+      var rowq = el('<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-top:1px dashed var(--line)"></div>');
+      rowq.appendChild(el('<span style="flex:1;font-size:.86rem"><b class="mono" style="color:var(--accent);font-size:.7rem">' + (q.type === "mc" ? "MC" : "SA") + '</b> ' + esc(q.q) + '</span>'));
+      var del = el('<button class="btn sm ghost del" title="Delete">✕</button>');
+      del.addEventListener("click", function () { st.questions = st.questions.filter(function (x) { return x.id !== q.id; }); save(); drawList(); });
+      rowq.appendChild(del);
+      listEl.appendChild(rowq);
+    });
+  }
+  drawList();
+
+  // Multiple-choice option inputs
+  var mcBox = m.querySelector("#q_mc");
+  mcBox.appendChild(el('<label class="f"><span>Options (tick the correct one)</span></label>'));
+  var optWrap = el('<div style="display:grid;gap:6px"></div>');
+  for (var oi = 0; oi < 4; oi++) {
+    var line = el('<div style="display:flex;align-items:center;gap:8px"></div>');
+    var radio = el('<input type="radio" name="q_correct" style="width:auto;flex:none">'); radio.value = String(oi); if (oi === 0) radio.checked = true;
+    var txt = el('<input class="q_opt" placeholder="Option ' + (oi + 1) + '">');
+    line.appendChild(radio); line.appendChild(txt); optWrap.appendChild(line);
+  }
+  mcBox.appendChild(optWrap);
+
+  var typeSel = m.querySelector("#q_type");
+  typeSel.addEventListener("change", function () {
+    var isMc = typeSel.value === "mc";
+    m.querySelector("#q_mc").hidden = !isMc;
+    m.querySelector("#q_short").hidden = isMc;
+  });
+
+  var foot = m.querySelector(".m-foot");
+  var closeB = el('<button class="btn ghost">Close</button>'); closeB.addEventListener("click", closeModal);
+  var addB = el('<button class="btn primary">Add question</button>');
+  addB.addEventListener("click", function () {
+    var prompt = m.querySelector("#q_prompt").value.trim();
+    if (!prompt) { m.querySelector("#q_prompt").focus(); return; }
+    var type = typeSel.value;
+    if (type === "mc") {
+      var opts = Array.prototype.slice.call(m.querySelectorAll(".q_opt")).map(function (i) { return i.value.trim(); });
+      if (opts.filter(function (o) { return o; }).length < 2) { return; }
+      var correct = parseInt((m.querySelector('input[name="q_correct"]:checked') || {}).value || "0", 10);
+      if (!opts[correct]) { return; }   // correct option must be filled in
+      st.questions.push({ id: uid(), type: "mc", q: prompt, options: opts.filter(function (o) { return o; }), answer: Math.min(correct, opts.filter(function (o) { return o; }).length - 1) });
+    } else {
+      var ans = m.querySelector("#q_ans").value.trim();
+      if (!ans) { m.querySelector("#q_ans").focus(); return; }
+      st.questions.push({ id: uid(), type: "short", q: prompt, answer: ans });
+    }
+    save();
+    // reset the form
+    m.querySelector("#q_prompt").value = "";
+    m.querySelectorAll(".q_opt").forEach(function (i) { i.value = ""; });
+    if (m.querySelector("#q_ans")) m.querySelector("#q_ans").value = "";
+    drawList();
+  });
+  foot.appendChild(closeB); foot.appendChild(addB);
+  openModal(m);
 }
 
 /* ---------------- Modals ---------------- */
@@ -910,7 +1247,8 @@ function render() {
   root.innerHTML = "";
   if (currentView === "dashboard") renderDashboard(root);
   else if (currentView === "subjects") renderSubjects(root);
-  else renderTests(root);
+  else if (currentView === "tests") renderTests(root);
+  else renderPractise(root);
 }
 
 document.querySelectorAll("nav.tabs button").forEach(function (b) {
@@ -1049,6 +1387,7 @@ function handleSession(session) {
     loadCloud().then(showSignedIn);
   } else {
     authedId = null; userId = null; state = null;
+    quiz = null; quizResult = null;
     showSignedOut();
   }
 }
