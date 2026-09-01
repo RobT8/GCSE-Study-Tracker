@@ -722,6 +722,31 @@ function reorderSubjects(fromId, toId) {
   save(); render();
 }
 
+/* Sub-topic progress: stage (none/learning/completed) + status (weak/secure/mastered).
+   Backed by the numeric `confidence` (0-100) the scoring model already uses. */
+function stageStatusToConf(stage, status) {
+  if (stage === "none") return 0;
+  var base = stage === "completed" ? { weak: 60, secure: 78, mastered: 95 } : { weak: 20, secure: 35, mastered: 50 };
+  return base[status] || base.secure;
+}
+function deriveStageStatus(st) {
+  if (st.stage) return { stage: st.stage, status: st.status || "weak" };
+  var c = st.confidence || 0;
+  if (c <= 0) return { stage: "none", status: "weak" };
+  if (c < 28) return { stage: "learning", status: "weak" };
+  if (c < 43) return { stage: "learning", status: "secure" };
+  if (c < 55) return { stage: "learning", status: "mastered" };
+  if (c < 69) return { stage: "completed", status: "weak" };
+  if (c < 87) return { stage: "completed", status: "secure" };
+  return { stage: "completed", status: "mastered" };
+}
+function setStageStatus(st, stage, status) {
+  st.stage = stage;
+  st.status = stage === "none" ? null : (status || "weak");
+  st.confidence = stageStatusToConf(stage, st.status);
+  save(); render();
+}
+
 function renderSubjects(root) {
   root.appendChild(el('<div class="view-head"><div>' +
     '<span class="eyebrow">Curriculum map</span>' +
@@ -786,11 +811,11 @@ function renderSubjects(root) {
 
     s.topics.forEach(function (t) {
       var tWrap = el('<div class="topic"></div>');
-      var tHead = el('<div class="topic-head"><span class="tn">' + esc(t.name) + '</span></div>');
-      var tAct = el('<span style="display:flex;gap:4px;margin-left:auto"></span>');
+      var tHead = el('<div class="topic-head"></div>');
+      var tName = el('<span class="tn" style="flex:none">' + esc(t.name) + '</span>');
       var addSub = el('<button class="btn sm ghost">+ Sub-topic</button>');
       var renT = el('<button class="btn sm ghost">Rename</button>');
-      var delT = el('<button class="btn sm ghost del">✕</button>');
+      var delT = el('<button class="btn sm ghost del" style="margin-left:auto" title="Delete topic">✕</button>');
       addSub.addEventListener("click", function () { openSubtopicModal(t); });
       renT.addEventListener("click", function () { openTopicModal(s, t); });
       delT.addEventListener("click", function () {
@@ -798,29 +823,44 @@ function renderSubjects(root) {
           s.topics = s.topics.filter(function (x) { return x.id !== t.id; }); save(); render();
         });
       });
-      tAct.appendChild(addSub); tAct.appendChild(renT); tAct.appendChild(delT);
-      tHead.appendChild(tAct);
+      tHead.appendChild(tName); tHead.appendChild(addSub); tHead.appendChild(renT); tHead.appendChild(delT);
       tWrap.appendChild(tHead);
 
       var subs = el('<div class="subs"></div>');
       t.subtopics.forEach(function (st) {
         var row = el('<div class="sub-row"><span class="sn">' + esc(st.name) + '</span></div>');
-        var rag = el('<div class="rag" role="group" aria-label="Confidence for ' + esc(st.name) + '"></div>');
-        RAG_LEVELS.forEach(function (lvl, i) {
-          var pressed = confToLevel(st.confidence) === i;
-          var b = el('<button class="' + lvl.cls + '" aria-pressed="' + pressed + '">' + lvl.label + '</button>');
-          b.addEventListener("click", function () {
-            st.confidence = lvl.v; save(); render();
-          });
-          rag.appendChild(b);
+        var ss = deriveStageStatus(st);
+
+        var ctrl = el('<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>');
+        var stageSel = el('<select aria-label="Progress stage for ' + esc(st.name) + '" style="width:auto;padding:5px 9px;font-size:.82rem"></select>');
+        [["none", "Not started yet"], ["learning", "Learning"], ["completed", "Completed"]].forEach(function (o) {
+          var op = el('<option></option>'); op.value = o[0]; op.textContent = o[1];
+          if (o[0] === ss.stage) op.selected = true;
+          stageSel.appendChild(op);
         });
+        stageSel.addEventListener("change", function () {
+          if (stageSel.value === "none") setStageStatus(st, "none", null);
+          else setStageStatus(st, stageSel.value, deriveStageStatus(st).status || "weak");
+        });
+        ctrl.appendChild(stageSel);
+
+        if (ss.stage !== "none") {
+          var statusBox = el('<div class="rag" role="group" aria-label="Status for ' + esc(st.name) + '"></div>');
+          [["weak", "Weak", "vr"], ["secure", "Secure", "vg"], ["mastered", "Mastered", "vb"]].forEach(function (o) {
+            var b = el('<button class="' + o[2] + '" aria-pressed="' + (ss.status === o[0]) + '">' + o[1] + '</button>');
+            b.addEventListener("click", function () { setStageStatus(st, ss.stage, o[0]); });
+            statusBox.appendChild(b);
+          });
+          ctrl.appendChild(statusBox);
+        }
+
         var qBtn = el('<button class="btn sm ghost" title="Practice questions for this sub-topic">Qs&nbsp;' + ((st.questions || []).length) + '</button>');
         qBtn.addEventListener("click", function () { openQuestionsModal(st); });
-        var delS = el('<button class="btn sm ghost del" title="Remove sub-topic">✕</button>');
+        var delS = el('<button class="btn sm ghost del" title="Remove sub-topic" style="margin-left:auto">✕</button>');
         delS.addEventListener("click", function () {
           t.subtopics = t.subtopics.filter(function (x) { return x.id !== st.id; }); save(); render();
         });
-        row.appendChild(rag); row.appendChild(qBtn); row.appendChild(delS);
+        row.appendChild(ctrl); row.appendChild(qBtn); row.appendChild(delS);
         subs.appendChild(row);
       });
       if (!t.subtopics.length) subs.appendChild(el('<span class="muted" style="font-size:.82rem">No sub-topics yet.</span>'));
@@ -1320,25 +1360,14 @@ function openSubtopicModal(topic) {
   var m = el('<div class="modal"><div class="m-body">' +
     '<h3>Add sub-topic</h3>' +
     '<label class="f"><span>Sub-topic name</span><input id="st_name" placeholder="e.g. Circle theorems"></label>' +
-    '<label class="f"><span>How secure is he right now?</span></label>' +
-    '<div class="rag" id="st_rag" role="group" style="margin-top:4px"></div>' +
+    '<p class="hint">It starts as “Not started yet” — set his progress from the list afterwards.</p>' +
     '</div><div class="m-foot"></div></div>');
-  var chosen = 1;
-  var rag = m.querySelector("#st_rag");
-  RAG_LEVELS.forEach(function (lvl, i) {
-    var b = el('<button class="' + lvl.cls + '" aria-pressed="' + (i === chosen) + '">' + lvl.label + '</button>');
-    b.addEventListener("click", function () {
-      chosen = i;
-      rag.querySelectorAll("button").forEach(function (x, j) { x.setAttribute("aria-pressed", String(j === i)); });
-    });
-    rag.appendChild(b);
-  });
   var foot = m.querySelector(".m-foot");
   var cancel = el('<button class="btn ghost">Cancel</button>'); cancel.addEventListener("click", closeModal);
   var savb = el('<button class="btn primary">Add</button>');
   savb.addEventListener("click", function () {
     var name = m.querySelector("#st_name").value.trim(); if (!name) return;
-    topic.subtopics.push({ id: uid(), name: name, confidence: RAG_LEVELS[chosen].v });
+    topic.subtopics.push({ id: uid(), name: name, stage: "none", status: null, confidence: 0, questions: [], attempts: [] });
     save(); closeModal(); render();
   });
   foot.appendChild(cancel); foot.appendChild(savb);
