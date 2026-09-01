@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --paper: #f4f6f4; --card: #ffffff; --card-2: #eef1ee;
@@ -201,6 +202,19 @@
     .subj-meta { display: none; }
     .row2 { grid-template-columns: 1fr; }
   }
+
+  /* Sync status + auth */
+  .sync { font-family: "IBM Plex Mono", monospace; font-size: .72rem; font-weight: 500; padding: 0 4px; white-space: nowrap; }
+  .auth-wrap { max-width: 420px; margin: 6vh auto 0; }
+  .auth-card { padding: 34px 30px 30px; text-align: center; }
+  .auth-badge { width: 56px; height: 56px; border-radius: 16px; background: var(--accent-soft); display: grid; place-items: center; margin: 0 auto 18px; }
+  .auth-badge .compass { width: 30px; height: 30px; }
+  .auth-title { font-size: 1.4rem; margin-bottom: 6px; }
+  .auth-sub { color: var(--ink-soft); font-size: .92rem; margin: 0 auto 18px; max-width: 34ch; }
+  .auth-form { text-align: left; }
+  .auth-form label.f { margin-top: 12px; }
+  .auth-msg { font-size: .84rem; margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; background: var(--card-2); }
+  .auth-alt { margin-top: 16px; font-size: .8rem; color: var(--ink-faint); text-align: center; }
 </style>
 </head>
 <body>
@@ -211,10 +225,12 @@
       <div><b>Revision Compass</b><small id="studentLine">GCSE progress</small></div>
     </div>
     <div class="spacer"></div>
-    <button class="btn sm" id="editStudent" title="Edit profile &amp; target grades">Profile</button>
+    <span class="sync" id="syncStatus" hidden></span>
+    <button class="btn sm" id="editStudent" title="Edit profile &amp; target grades" hidden>Profile</button>
+    <button class="btn sm ghost" id="signOutBtn" title="Sign out" hidden>Sign out</button>
     <button class="icon-btn" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
   </div>
-  <nav class="tabs" role="tablist">
+  <nav class="tabs" id="appNav" role="tablist" hidden>
     <button role="tab" aria-selected="true" data-view="dashboard">Dashboard</button>
     <button role="tab" aria-selected="false" data-view="subjects">Subjects</button>
     <button role="tab" aria-selected="false" data-view="tests">Tests</button>
@@ -230,21 +246,50 @@
 <script>
 "use strict";
 
-/* ---------------- Storage ---------------- */
-var KEY = "revisionCompass.v1";
+/* ---------------- Backend (Supabase) + storage ---------------- */
+var SUPABASE_URL = "https://zusfwsamcsjorkwficvk.supabase.co";
+var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1c2Z3c2FtY3Nqb3Jrd2ZpY3ZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyOTI4MDQsImV4cCI6MjEwMzg2ODgwNH0.vjgON9P45hXvuDcHwgGPLww6zRTi8nTx6scX9Z8tL14";
+var sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+var KEY = "revisionCompass.v1";   // legacy Phase-1 key (used once for migration)
 var state = null;
+var userId = null;
+var authedId = null;
+var cloudTimer = null;
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
-function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private mode etc. */ }
+/* Per-user local cache — an offline copy so the app opens instantly and
+   survives a dropped connection; the cloud row is the source of truth. */
+function cacheKey() { return KEY + ".cache." + (userId || "anon"); }
+function writeCache() { try { localStorage.setItem(cacheKey(), JSON.stringify(state)); } catch (e) {} }
+function readCache() { try { var r = localStorage.getItem(cacheKey()); if (r) return JSON.parse(r); } catch (e) {} return null; }
+
+function setSync(s) {
+  var elx = document.getElementById("syncStatus");
+  if (!elx) return;
+  var map = { saving: ["Saving…", "var(--a)"], synced: ["✓ Synced", "var(--g)"],
+              offline: ["⚠ Offline", "var(--r)"], "": ["", "var(--ink-faint)"] };
+  var m = map[s] || map[""];
+  elx.textContent = m[0]; elx.style.color = m[1];
 }
-function load() {
-  try {
-    var raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return null;
+
+/* Called throughout the app after any change. */
+function save() {
+  writeCache();
+  scheduleCloudSave();
+}
+function scheduleCloudSave() {
+  if (!userId || !sb) return;
+  setSync("saving");
+  if (cloudTimer) clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(pushCloud, 700);
+}
+function pushCloud() {
+  if (!userId || !sb) return;
+  sb.from("app_state").upsert({ user_id: userId, data: state }, { onConflict: "user_id" })
+    .then(function (res) { setSync(res && res.error ? "offline" : "synced"); })
+    .catch(function () { setSync("offline"); });
 }
 
 /* ---------------- Seed data ---------------- */
@@ -896,10 +941,129 @@ document.getElementById("themeToggle").addEventListener("click", function () {
   try { var t = localStorage.getItem(KEY + ".theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
 })();
 
+/* ---------------- Auth screen ---------------- */
+function renderAuth() {
+  var root = document.getElementById("app");
+  root.innerHTML = "";
+  var signup = false;
+  var wrap = el('<div class="auth-wrap"></div>');
+  var card = el('<div class="card auth-card"></div>');
+  card.appendChild(el('<div class="auth-badge"><div class="compass" aria-hidden="true"></div></div>'));
+  var h = el('<h2 class="auth-title">Welcome to Revision Compass</h2>');
+  var sub = el('<p class="auth-sub">Sign in to track progress and keep it in sync across every device.</p>');
+  card.appendChild(h); card.appendChild(sub);
+  var form = el('<form class="auth-form" novalidate></form>');
+  form.appendChild(el('<label class="f"><span>Email</span><input id="au_email" type="email" autocomplete="email" placeholder="you@example.com"></label>'));
+  form.appendChild(el('<label class="f"><span>Password</span><input id="au_pass" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>'));
+  var msg = el('<p class="auth-msg" hidden></p>');
+  var submit = el('<button type="submit" class="btn primary" style="width:100%;justify-content:center;margin-top:16px">Sign in</button>');
+  var toggle = el('<button type="button" class="btn ghost" style="width:100%;justify-content:center;margin-top:8px">New here? Create an account</button>');
+  form.appendChild(msg); form.appendChild(submit); form.appendChild(toggle);
+  card.appendChild(form);
+  wrap.appendChild(card);
+  root.appendChild(wrap);
+
+  if (!sb) { msg.hidden = false; msg.textContent = "Couldn't reach the sign-in service. Check your connection and refresh."; msg.style.color = "var(--r)"; }
+
+  function setMode(s) {
+    signup = s;
+    h.textContent = signup ? "Create your account" : "Welcome to Revision Compass";
+    submit.textContent = signup ? "Create account" : "Sign in";
+    document.getElementById("au_pass").setAttribute("autocomplete", signup ? "new-password" : "current-password");
+    toggle.textContent = signup ? "Already have an account? Sign in" : "New here? Create an account";
+    msg.hidden = true;
+  }
+  function showMsg(text, ok) { msg.hidden = false; msg.textContent = text; msg.style.color = ok ? "var(--g)" : "var(--r)"; }
+  toggle.addEventListener("click", function () { setMode(!signup); });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!sb) return;
+    var email = document.getElementById("au_email").value.trim();
+    var pass = document.getElementById("au_pass").value;
+    if (!email || !pass) { showMsg("Enter your email and password.", false); return; }
+    if (signup && pass.length < 6) { showMsg("Password must be at least 6 characters.", false); return; }
+    submit.disabled = true; submit.textContent = signup ? "Creating…" : "Signing in…";
+    var done = function () { submit.disabled = false; submit.textContent = signup ? "Create account" : "Sign in"; };
+
+    if (signup) {
+      sb.auth.signUp({ email: email, password: pass, options: { emailRedirectTo: window.location.href.split("#")[0] } })
+        .then(function (r) {
+          if (r.error) { showMsg(r.error.message, false); }
+          else if (!r.data.session) { showMsg("Account created! Check your email to confirm, then sign in.", true); setMode(false); }
+          done();
+        }).catch(function (err) { showMsg(err.message || "Something went wrong.", false); done(); });
+    } else {
+      sb.auth.signInWithPassword({ email: email, password: pass })
+        .then(function (r) { if (r.error) { showMsg(r.error.message, false); done(); } /* success -> auth listener */ })
+        .catch(function (err) { showMsg(err.message || "Something went wrong.", false); done(); });
+    }
+  });
+}
+
+/* ---------------- Session lifecycle ---------------- */
+function showSignedOut() {
+  document.getElementById("appNav").hidden = true;
+  document.getElementById("editStudent").hidden = true;
+  document.getElementById("signOutBtn").hidden = true;
+  document.getElementById("syncStatus").hidden = true;
+  document.getElementById("studentLine").textContent = "Sign in to sync";
+  renderAuth();
+}
+function showSignedIn() {
+  document.getElementById("appNav").hidden = false;
+  document.getElementById("editStudent").hidden = false;
+  document.getElementById("signOutBtn").hidden = false;
+  document.getElementById("syncStatus").hidden = false;
+  currentView = "dashboard";
+  document.querySelectorAll("nav.tabs button").forEach(function (x, i) { x.setAttribute("aria-selected", String(i === 0)); });
+  render();
+}
+
+function loadCloud() {
+  setSync("saving");
+  return sb.from("app_state").select("data").eq("user_id", userId).maybeSingle()
+    .then(function (res) {
+      if (res.error) throw res.error;
+      if (res.data && res.data.data && res.data.data.subjects) {
+        state = res.data.data; writeCache(); setSync("synced"); return;
+      }
+      // First time on this account — migrate a Phase-1 local copy if present, else seed.
+      var legacy = null;
+      try { var r = localStorage.getItem(KEY); if (r) legacy = JSON.parse(r); } catch (e) {}
+      state = (legacy && legacy.subjects) ? legacy : (readCache() || attachSeedTests(seed()));
+      writeCache(); pushCloud();   // create the cloud row
+    })
+    .catch(function () {
+      // Offline / error — fall back to this device's cache (or seed) and sync later.
+      state = readCache() || attachSeedTests(seed());
+      setSync("offline");
+    });
+}
+
+function handleSession(session) {
+  if (session && session.user) {
+    if (authedId === session.user.id) return;   // already handled
+    authedId = session.user.id;
+    userId = session.user.id;
+    loadCloud().then(showSignedIn);
+  } else {
+    authedId = null; userId = null; state = null;
+    showSignedOut();
+  }
+}
+
+document.getElementById("signOutBtn").addEventListener("click", function () {
+  if (sb) sb.auth.signOut();   // auth listener will show the signed-out screen
+});
+
 /* Boot */
-state = load();
-if (!state || !state.subjects) { state = attachSeedTests(seed()); save(); }
-render();
+if (sb) {
+  sb.auth.onAuthStateChange(function (_event, session) { handleSession(session); });
+  sb.auth.getSession().then(function (r) { handleSession(r.data ? r.data.session : null); });
+} else {
+  showSignedOut();
+}
 </script>
 </body>
 </html>
