@@ -486,7 +486,7 @@ function findCurriculum(name) {
 function curriculumTopics(c) {
   return c.topics.map(function (t) {
     return { id: uid(), name: t[0], subtopics: t[1].map(function (sn) {
-      return { id: uid(), name: sn, confidence: 40, questions: [], attempts: [] };
+      return { id: uid(), name: sn, stage: "none", status: null, confidence: 0, questions: [], attempts: [] };
     }) };
   });
 }
@@ -745,6 +745,22 @@ function setStageStatus(st, stage, status) {
   st.status = stage === "none" ? null : (status || "weak");
   st.confidence = stageStatusToConf(stage, st.status);
   save(); render();
+}
+/* One-off tidy: earlier auto-filled sub-topics defaulted to 40 ("Learning");
+   with no explicit stage set, reset those to "Not started yet". */
+function normalizeState() {
+  var changed = 0;
+  if (!state || !state.subjects) return false;
+  state.subjects.forEach(function (s) {
+    (s.topics || []).forEach(function (t) {
+      (t.subtopics || []).forEach(function (st) {
+        if (!st.stage && st.confidence === 40) { st.stage = "none"; st.status = null; st.confidence = 0; changed++; }
+        if (!st.questions) st.questions = [];
+        if (!st.attempts) st.attempts = [];
+      });
+    });
+  });
+  return changed > 0;
 }
 
 function renderSubjects(root) {
@@ -1598,6 +1614,7 @@ function showSignedIn() {
   document.getElementById("editStudent").hidden = false;
   document.getElementById("signOutBtn").hidden = false;
   document.getElementById("syncStatus").hidden = false;
+  if (state && normalizeState()) save();
   currentView = "dashboard";
   document.querySelectorAll("nav.tabs button").forEach(function (x, i) { x.setAttribute("aria-selected", String(i === 0)); });
   render();
