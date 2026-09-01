@@ -215,6 +215,14 @@
   .auth-form label.f { margin-top: 12px; }
   .auth-msg { font-size: .84rem; margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; background: var(--card-2); }
   .auth-alt { margin-top: 16px; font-size: .8rem; color: var(--ink-faint); text-align: center; }
+
+  /* Collapsible / draggable subject cards */
+  .drag-handle { cursor: grab; color: var(--ink-faint); font-size: 1.05rem; line-height: 1; padding: 2px; user-select: none; flex: none; }
+  .drag-handle:active { cursor: grabbing; }
+  .collapse-chevron { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: .72rem; padding: 4px; transition: transform .2s; flex: none; }
+  .collapse-chevron.open { transform: rotate(90deg); }
+  .subj-card.dragover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .subj-card [disabled] { opacity: .35; cursor: default; }
 </style>
 </head>
 <body>
@@ -695,24 +703,70 @@ var RAG_LEVELS = [ { label: "Weak", v: 25, cls: "vr" }, { label: "Learning", v: 
                    { label: "Secure", v: 75, cls: "vg" }, { label: "Mastered", v: 92, cls: "vb" } ];
 function confToLevel(c) { if (c >= 85) return 3; if (c >= 65) return 2; if (c >= 40) return 1; return 0; }
 
+/* Collapse state (per-device UI preference) + reorder helpers */
+var dragSubjectId = null;
+function collapsedKey() { return KEY + ".collapsed." + (userId || "anon"); }
+function collapsedMap() { try { return JSON.parse(localStorage.getItem(collapsedKey()) || "{}"); } catch (e) { return {}; } }
+function isCollapsed(id) { return !!collapsedMap()[id]; }
+function setCollapsed(id, val) { var o = collapsedMap(); if (val) o[id] = 1; else delete o[id]; try { localStorage.setItem(collapsedKey(), JSON.stringify(o)); } catch (e) {} }
+function setAllCollapsed(val) { var o = {}; if (val) state.subjects.forEach(function (s) { o[s.id] = 1; }); try { localStorage.setItem(collapsedKey(), JSON.stringify(o)); } catch (e) {} }
+function anyExpanded() { for (var i = 0; i < state.subjects.length; i++) { if (!isCollapsed(state.subjects[i].id)) return true; } return false; }
+function reorderSubjects(fromId, toId) {
+  if (fromId === toId) return;
+  var arr = state.subjects, from = -1, to = 0, i;
+  for (i = 0; i < arr.length; i++) if (arr[i].id === fromId) { from = i; break; }
+  if (from < 0) return;
+  var item = arr.splice(from, 1)[0];
+  for (i = 0; i < arr.length; i++) if (arr[i].id === toId) { to = i; break; }
+  arr.splice(to, 0, item);
+  save(); render();
+}
+
 function renderSubjects(root) {
   root.appendChild(el('<div class="view-head"><div>' +
     '<span class="eyebrow">Curriculum map</span>' +
     '<h2>Subjects &amp; topics</h2>' +
-    '<p>Set how secure he feels on each sub-topic. Tests (next tab) refine these automatically.</p>' +
-    '</div><button class="btn primary" id="addSubject">+ Subject</button></div>'));
+    '<p>Set how secure he feels on each sub-topic. Drag the ⠿ handle (or use ↑ ↓) to reorder.</p>' +
+    '</div><div style="display:flex;gap:8px;align-items:center">' +
+    (state.subjects.length ? '<button class="btn ghost sm" id="collapseAll">' + (anyExpanded() ? "Collapse all" : "Expand all") + '</button>' : "") +
+    '<button class="btn primary" id="addSubject">+ Subject</button></div></div>'));
 
   if (!state.subjects.length) {
     root.appendChild(el('<div class="card"><div class="empty"><div class="big">📚</div>No subjects yet — add his first one to get started.</div></div>'));
   }
 
   state.subjects.forEach(function (s) {
-    var card = el('<div class="card pad" style="margin-bottom:16px"></div>');
-    var head = el('<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:6px">' +
-      '<div style="flex:1"><h3 style="font-size:1.15rem">' + esc(s.name) + '</h3>' +
-      '<div class="muted" style="font-size:.82rem">' + esc(s.board || "No board set") +
-      (s.target ? ' · target grade ' + esc(s.target) : "") + '</div></div></div>');
-    var actions = el('<div style="display:flex;gap:6px"></div>');
+    var collapsed = isCollapsed(s.id);
+    var idx = state.subjects.indexOf(s);
+    var mastery = subjectMastery(s), mb = band(mastery);
+    var card = el('<div class="card subj-card" style="margin-bottom:16px;padding:15px 18px"></div>');
+    card.setAttribute("draggable", "true");
+    card.addEventListener("dragstart", function (e) { dragSubjectId = s.id; card.style.opacity = ".45"; try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", s.id); } catch (_) {} });
+    card.addEventListener("dragend", function () { dragSubjectId = null; card.style.opacity = ""; card.classList.remove("dragover"); });
+    card.addEventListener("dragover", function (e) { if (dragSubjectId && dragSubjectId !== s.id) { e.preventDefault(); card.classList.add("dragover"); } });
+    card.addEventListener("dragleave", function () { card.classList.remove("dragover"); });
+    card.addEventListener("drop", function (e) { e.preventDefault(); card.classList.remove("dragover"); if (dragSubjectId) reorderSubjects(dragSubjectId, s.id); });
+
+    var head = el('<div style="display:flex;align-items:center;gap:8px"></div>');
+    var handle = el('<span class="drag-handle" title="Drag to reorder">⠿</span>');
+    var chev = el('<button class="collapse-chevron' + (collapsed ? "" : " open") + '" aria-label="Collapse or expand subject">▶</button>');
+    var titleWrap = el('<div style="flex:1;cursor:pointer;min-width:0">' +
+      '<h3 style="font-size:1.12rem;display:flex;align-items:center;gap:8px">' + esc(s.name) +
+      '<span class="chip ' + mb.key + '" style="font-size:.62rem">' + mastery + '%</span></h3>' +
+      '<div class="muted" style="font-size:.8rem">' + esc(s.board || "No board set") +
+      (s.target ? ' · target ' + esc(s.target) : "") +
+      ' · ' + s.topics.length + ' topic' + (s.topics.length === 1 ? "" : "s") + '</div></div>');
+    function toggleCollapse() { setCollapsed(s.id, !isCollapsed(s.id)); render(); }
+    chev.addEventListener("click", toggleCollapse);
+    titleWrap.addEventListener("click", toggleCollapse);
+
+    var actions = el('<div style="display:flex;gap:4px;flex:none"></div>');
+    var upB = el('<button class="btn sm ghost" title="Move up">↑</button>');
+    var downB = el('<button class="btn sm ghost" title="Move down">↓</button>');
+    if (idx <= 0) upB.disabled = true;
+    if (idx >= state.subjects.length - 1) downB.disabled = true;
+    upB.addEventListener("click", function () { if (idx > 0) reorderSubjects(s.id, state.subjects[idx - 1].id); });
+    downB.addEventListener("click", function () { if (idx < state.subjects.length - 1) reorderSubjects(state.subjects[idx + 1].id, s.id); });
     var editB = el('<button class="btn sm ghost">Edit</button>');
     var delB = el('<button class="btn sm ghost del">Delete</button>');
     editB.addEventListener("click", function () { openSubjectModal(s); });
@@ -723,9 +777,12 @@ function renderSubjects(root) {
         save(); render();
       });
     });
-    actions.appendChild(editB); actions.appendChild(delB);
-    head.appendChild(actions);
+    actions.appendChild(upB); actions.appendChild(downB); actions.appendChild(editB); actions.appendChild(delB);
+    head.appendChild(handle); head.appendChild(chev); head.appendChild(titleWrap); head.appendChild(actions);
     card.appendChild(head);
+
+    var body = el('<div style="margin-top:12px"></div>');
+    body.hidden = collapsed;
 
     s.topics.forEach(function (t) {
       var tWrap = el('<div class="topic"></div>');
@@ -768,17 +825,20 @@ function renderSubjects(root) {
       });
       if (!t.subtopics.length) subs.appendChild(el('<span class="muted" style="font-size:.82rem">No sub-topics yet.</span>'));
       tWrap.appendChild(subs);
-      card.appendChild(tWrap);
+      body.appendChild(tWrap);
     });
 
     var addTopic = el('<button class="btn sm" style="margin-top:12px">+ Topic</button>');
     addTopic.addEventListener("click", function () { openTopicModal(s, null); });
-    card.appendChild(addTopic);
+    body.appendChild(addTopic);
+    card.appendChild(body);
     root.appendChild(card);
   });
 
   var addBtn = root.querySelector("#addSubject");
   if (addBtn) addBtn.addEventListener("click", function () { openSubjectModal(null); });
+  var caBtn = root.querySelector("#collapseAll");
+  if (caBtn) caBtn.addEventListener("click", function () { setAllCollapsed(anyExpanded()); render(); });
 }
 
 /* ---------------- Render: Tests ---------------- */
