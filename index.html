@@ -256,8 +256,8 @@
 "use strict";
 
 /* ---------------- Backend (Supabase) + storage ---------------- */
-var SUPABASE_URL = "https://zusfwsamcsjorkwficvk.supabase.co";
-var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1c2Z3c2FtY3Nqb3Jrd2ZpY3ZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyOTI4MDQsImV4cCI6MjEwMzg2ODgwNH0.vjgON9P45hXvuDcHwgGPLww6zRTi8nTx6scX9Z8tL14";
+var SUPABASE_URL = "https://zpesevmnmaifnooqiyrr.supabase.co";
+var SUPABASE_ANON_KEY = "sb_publishable_5WdjrD77OFZANghegb_4-w_fR4d582z";
 var sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 var KEY = "revisionCompass.v1";   // legacy Phase-1 key (used once for migration)
@@ -296,7 +296,7 @@ function scheduleCloudSave() {
 }
 function pushCloud() {
   if (!userId || !sb) return;
-  sb.from("app_state").upsert({ user_id: userId, data: state }, { onConflict: "user_id" })
+  sb.from("gcse_app_state").upsert({ user_id: userId, data: state }, { onConflict: "user_id" })
     .then(function (res) { setSync(res && res.error ? "offline" : "synced"); })
     .catch(function () { setSync("offline"); });
 }
@@ -1306,7 +1306,7 @@ function runWeakSpots(picks) {
     if (i >= picks.length) { if (added) save(); finish(); return; }
     var p = picks[i];
     paint("(" + (i + 1) + "/" + picks.length + ") " + p.st.name + "…");
-    sb.functions.invoke("generate-questions", { body: aiPayloadFor(p.subject, p.topic, p.st, 5) }).then(function (res) {
+    sb.functions.invoke("gcse-generate-questions", { body: aiPayloadFor(p.subject, p.topic, p.st, 5) }).then(function (res) {
       var n = 0;
       if (!res.error && res.data && !res.data.error) {
         var qs = (res.data.questions || []).map(sanitizeAIQuestion).filter(Boolean);
@@ -1387,7 +1387,7 @@ function openQuestionsModal(st, ctx) {
     var count = parseInt(m.querySelector("#ai_count").value, 10) || 5;
     var payload = aiPayloadFor(subj, top, st, count);
     aiGo.disabled = true; aiShow("Generating… this can take a few seconds.");
-    sb.functions.invoke("generate-questions", { body: payload }).then(function (res) {
+    sb.functions.invoke("gcse-generate-questions", { body: payload }).then(function (res) {
       aiGo.disabled = false;
       if (res.error) { aiShow("Couldn't reach the AI service. Please try again.", "err"); return; }
       var data = res.data || {};
@@ -1811,7 +1811,7 @@ function showSignedIn() {
 
 function loadCloud() {
   setSync("saving");
-  return sb.from("app_state").select("data").eq("user_id", userId).maybeSingle()
+  return sb.from("gcse_app_state").select("data").eq("user_id", userId).maybeSingle()
     .then(function (res) {
       if (res.error) throw res.error;
       if (res.data && res.data.data && res.data.data.subjects) {
