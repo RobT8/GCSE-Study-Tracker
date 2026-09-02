@@ -1278,6 +1278,24 @@ function aiPayloadFor(subject, topic, st, count) {
   };
 }
 
+/* Call the edge function directly (avoids a header-encoding bug in the
+   library's functions.invoke); returns { data, error } like invoke does. */
+function aiInvoke(payload) {
+  return sb.auth.getSession().then(function (r) {
+    var token = (r && r.data && r.data.session && r.data.session.access_token) ? r.data.session.access_token : SUPABASE_ANON_KEY;
+    return fetch(SUPABASE_URL + "/functions/v1/gcse-generate-questions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + token },
+      body: JSON.stringify(payload)
+    });
+  }).then(function (resp) {
+    return resp.json().catch(function () { return {}; }).then(function (j) {
+      if (!resp.ok) return { data: null, error: { message: (j && j.error) || ("Request failed (" + resp.status + ")") } };
+      return { data: j, error: null };
+    });
+  });
+}
+
 function generateWeakSpots() {
   if (!sb) { confirmModal("Not connected", "Please refresh and sign in first.", null); return; }
   var picks = weakestSubtopics(3);
@@ -1306,7 +1324,7 @@ function runWeakSpots(picks) {
     if (i >= picks.length) { if (added) save(); finish(); return; }
     var p = picks[i];
     paint("(" + (i + 1) + "/" + picks.length + ") " + p.st.name + "…");
-    sb.functions.invoke("gcse-generate-questions", { body: aiPayloadFor(p.subject, p.topic, p.st, 5) }).then(function (res) {
+    aiInvoke(aiPayloadFor(p.subject, p.topic, p.st, 5)).then(function (res) {
       var n = 0;
       if (!res.error && res.data && !res.data.error) {
         var qs = (res.data.questions || []).map(sanitizeAIQuestion).filter(Boolean);
@@ -1387,7 +1405,7 @@ function openQuestionsModal(st, ctx) {
     var count = parseInt(m.querySelector("#ai_count").value, 10) || 5;
     var payload = aiPayloadFor(subj, top, st, count);
     aiGo.disabled = true; aiShow("Generating… this can take a few seconds.");
-    sb.functions.invoke("gcse-generate-questions", { body: payload }).then(function (res) {
+    aiInvoke(payload).then(function (res) {
       aiGo.disabled = false;
       if (res.error) { aiShow("Couldn't reach the AI service. Please try again.", "err"); return; }
       var data = res.data || {};
