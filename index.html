@@ -700,7 +700,7 @@ function renderDashboard(root) {
     '<span><span class="dot" style="background:var(--a)"></span> Learning (40–64)</span>' +
     '<span><span class="dot" style="background:var(--g)"></span> Secure (65–84)</span>' +
     '<span><span class="dot" style="background:var(--b)"></span> Mastered (85–100)</span></div>'));
-  root.appendChild(el('<p class="foot-note">Scores blend his self-rating with real test results — tests weigh more. Everything saves to this browser.</p>'));
+  root.appendChild(el('<p class="foot-note">Scores blend self-rating, app quizzes and real test results — tests weigh most. Synced to your account. <span style="opacity:.6">· build v6</span></p>'));
 }
 
 /* ---------------- Render: Subjects ---------------- */
@@ -1280,14 +1280,21 @@ function aiPayloadFor(subject, topic, st, count) {
 
 /* Call the edge function directly (avoids a header-encoding bug in the
    library's functions.invoke); returns { data, error } like invoke does. */
+function currentAccessToken() {
+  try {
+    var ref = SUPABASE_URL.replace(/^https?:\/\//, "").split(".")[0];
+    var raw = localStorage.getItem("sb-" + ref + "-auth-token");
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    return (o && o.access_token) || (o && o.currentSession && o.currentSession.access_token) || null;
+  } catch (e) { return null; }
+}
 function aiInvoke(payload) {
-  return sb.auth.getSession().then(function (r) {
-    var token = (r && r.data && r.data.session && r.data.session.access_token) ? r.data.session.access_token : SUPABASE_ANON_KEY;
-    return fetch(SUPABASE_URL + "/functions/v1/gcse-generate-questions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + token },
-      body: JSON.stringify(payload)
-    });
+  var token = currentAccessToken() || SUPABASE_ANON_KEY;
+  return fetch(SUPABASE_URL + "/functions/v1/gcse-generate-questions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + token },
+    body: JSON.stringify(payload)
   }).then(function (resp) {
     return resp.json().catch(function () { return {}; }).then(function (j) {
       if (!resp.ok) return { data: null, error: { message: (j && j.error) || ("Request failed (" + resp.status + ")") } };
