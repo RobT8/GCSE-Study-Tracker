@@ -20,7 +20,7 @@ function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), { status, headers: { ...cors, "content-type": "application/json" } });
 }
 
-function difficultyFor(target: string, status: string, quizScore: number | null): string {
+function difficultyFor(target: string, status: string, quizScore: number | null, testEvidence: number | null): string {
   const t = parseInt(String(target).replace(/[^0-9]/g, ""), 10);
   const s = String(status).toLowerCase();
   let band: string;
@@ -28,9 +28,11 @@ function difficultyFor(target: string, status: string, quizScore: number | null)
   else if (t >= 4) band = "standard (grades 4-6), a mix of recall and application";
   else if (t >= 1) band = "foundation (grades 1-3), mostly recall and straightforward application";
   else band = "a broad GCSE range from recall to some application";
+  // Real test evidence is the strongest signal; fall back to quiz score, then self-rating.
+  const sig = (testEvidence !== null) ? testEvidence : quizScore;
   let adj = "";
-  if (quizScore !== null && quizScore < 45) adj = " He is scoring low here, so include some easier scaffolding questions that build up to the harder idea.";
-  else if (quizScore !== null && quizScore >= 80) adj = " He is scoring well here, so lean towards the harder end to stretch him.";
+  if (sig !== null && sig < 45) adj = " He is scoring low here in real assessment, so include easier scaffolding questions that build up to the harder idea.";
+  else if (sig !== null && sig >= 80) adj = " He is scoring well here, so lean towards the harder end to stretch him.";
   else if (s.indexOf("not started") >= 0 || s.indexOf("weak") >= 0) adj = " Start at the more accessible end to build confidence.";
   else if (s.indexOf("mastered") >= 0) adj = " Lean towards the harder end to stretch him.";
   return band + adj;
@@ -88,12 +90,23 @@ Deno.serve(async (req: Request) => {
     const quizScore = (typeof body.quizScore === "number" && isFinite(body.quizScore)) ? Math.round(body.quizScore) : null;
     const attempts = (body.attempts && typeof body.attempts === "object") ? body.attempts : null;
     const missed = Array.isArray(body.missed) ? body.missed.slice(0, 8).map((s: unknown) => String(s).slice(0, 240)) : [];
+    const testEvidence = (typeof body.testEvidence === "number" && isFinite(body.testEvidence)) ? Math.round(body.testEvidence) : null;
+    // deno-lint-ignore no-explicit-any
+    const tests = Array.isArray(body.tests) ? body.tests.slice(0, 3).map((t: any) => ({
+      name: String(t && t.name || "").slice(0, 120),
+      pct: (typeof (t && t.pct) === "number") ? Math.round(t.pct) : null,
+      grade: String(t && t.grade || "").slice(0, 8),
+      scope: String(t && t.scope || "").slice(0, 40),
+    })).filter((t: { pct: number | null }) => t.pct !== null) : [];
 
     if (!subtopic && !topic && !subject) return json({ error: "Nothing to generate from." });
 
-    const difficulty = difficultyFor(target, status, quizScore);
+    const difficulty = difficultyFor(target, status, quizScore, testEvidence);
     const perf = quizScore !== null
       ? `In recent app quizzes he scored about ${quizScore}% on this sub-topic${attempts ? ` (answered ${attempts.answered}, ${attempts.correct} correct)` : ""}.`
+      : "";
+    const testsBlock = tests.length
+      ? `Recent real school tests / mocks relevant to this topic (his strongest performance signal — weight these most):\n${tests.map((t) => `- ${t.name}: ${t.pct}%${t.grade ? ` (grade ${t.grade})` : ""} [${t.scope}]`).join("\n")}`
       : "";
     const missedBlock = missed.length
       ? `He recently got these questions WRONG. Write NEW questions that probe the same underlying knowledge or misconception from a different angle so he can master it — do not copy their wording:\n- ${missed.join("\n- ")}`
@@ -108,6 +121,7 @@ Sub-topic: ${subtopic}
 Target grade: ${target || "unspecified"} (GCSE grades run 9 highest to 1 lowest)
 Current level: ${status || "unspecified"}
 ${perf}
+${testsBlock}
 Pitch the difficulty at: ${difficulty}
 
 ${missedBlock}

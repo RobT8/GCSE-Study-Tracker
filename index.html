@@ -1257,12 +1257,24 @@ function aiPayloadFor(subject, topic, st, count) {
   var ss = deriveStageStatus(st);
   var statusLabel = ss.stage === "none" ? "Not started"
     : (ss.stage === "learning" ? "Learning" : "Completed") + " · " + ss.status;
+  // Real school-test evidence for this topic (recency-weighted %, plus recent tests).
+  var testPct = (subject && topic) ? testEvidenceForTopic(subject, topic.id) : null;
+  var recentTests = [];
+  if (subject) {
+    recentTests = state.tests.filter(function (t) {
+      return t.subjectId === subject.id && typeof t.pct === "number" &&
+        (t.topicIds.length === 0 || (topic && t.topicIds.indexOf(topic.id) >= 0));
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 3).map(function (t) {
+      return { name: t.name, pct: t.pct, grade: t.grade || "", scope: t.topicIds.length ? "this topic" : "whole subject" };
+    });
+  }
   return {
     subject: subject ? subject.name : "", board: subject ? subject.board : "",
     topic: topic ? topic.name : "", subtopic: st.name,
     targetGrade: subject ? subject.target : "", status: statusLabel, count: count,
     existing: (st.questions || []).map(function (q) { return q.q; }),
-    quizScore: subtopicQuizScore(st), attempts: subtopicAttemptSummary(st), missed: subtopicMissed(st, 8)
+    quizScore: subtopicQuizScore(st), attempts: subtopicAttemptSummary(st), missed: subtopicMissed(st, 8),
+    testEvidence: testPct, tests: recentTests
   };
 }
 
