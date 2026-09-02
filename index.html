@@ -1032,6 +1032,18 @@ function renderPractise(root) {
   if (quiz) { renderQuizRunner(root); return; }
   if (quizResult) { renderQuizResult(root); return; }
 
+  var hasSubtopics = false;
+  state.subjects.forEach(function (s) { s.topics.forEach(function (t) { if (t.subtopics.length) hasSubtopics = true; }); });
+  if (hasSubtopics) {
+    var wc = el('<div class="card pad" style="margin-bottom:16px;background:var(--accent-soft);border-color:color-mix(in srgb, var(--accent) 25%, var(--line))"></div>');
+    wc.appendChild(el('<div style="font-weight:600;font-size:.95rem;color:var(--accent-ink)">✨ Target his weak spots</div>'));
+    wc.appendChild(el('<p class="hint" style="margin:4px 0 10px;color:var(--accent-ink)">Generate AI questions aimed at the sub-topics he scores lowest on — using his quiz results and the questions he has got wrong.</p>'));
+    var wb = el('<button class="btn primary sm">Generate for weakest areas</button>');
+    wb.addEventListener("click", generateWeakSpots);
+    wc.appendChild(wb);
+    root.appendChild(wc);
+  }
+
   var total = allQuestions(null).length;
   if (!total) {
     root.appendChild(el('<div class="card"><div class="empty"><div class="big">🧠</div>' +
@@ -1148,8 +1160,8 @@ function answerQuiz(correct, chosen, text) {
   quiz.current = { correct: correct, chosen: chosen, text: text };
   quiz.answers.push({ st: item.st, correct: correct });
   item.st.attempts = item.st.attempts || [];
-  item.st.attempts.push({ t: Date.now(), c: correct ? 1 : 0 });
-  if (item.st.attempts.length > 30) item.st.attempts = item.st.attempts.slice(-30);
+  item.st.attempts.push({ t: Date.now(), c: correct ? 1 : 0, q: item.q.id });
+  if (item.st.attempts.length > 40) item.st.attempts = item.st.attempts.slice(-40);
   render();
 }
 
@@ -1205,6 +1217,98 @@ function renderQuizResult(root) {
 }
 
 /* ---------------- Question editor ---------------- */
+/* Performance signals used to make AI questions bespoke to his difficulties. */
+function subtopicAttemptSummary(st) {
+  var att = st.attempts || [];
+  if (!att.length) return null;
+  var correct = att.reduce(function (a, x) { return a + (x.c ? 1 : 0); }, 0);
+  return { answered: att.length, correct: correct };
+}
+function subtopicMissed(st, limit) {
+  var byId = {};
+  (st.questions || []).forEach(function (q) { byId[q.id] = q.q; });
+  var seen = {}, out = [];
+  var att = (st.attempts || []).slice().reverse();   // most recent first
+  att.forEach(function (a) {
+    if (a.c === 0 && a.q && byId[a.q] && !seen[a.q]) { seen[a.q] = 1; out.push(byId[a.q]); }
+  });
+  return out.slice(0, limit || 6);
+}
+
+/* Rank sub-topics he is struggling most with (engaged + lowest score first). */
+function weakestSubtopics(n) {
+  var list = [];
+  state.subjects.forEach(function (s) {
+    s.topics.forEach(function (t) {
+      t.subtopics.forEach(function (st) {
+        var ss = deriveStageStatus(st);
+        var engaged = ss.stage !== "none" || (st.attempts || []).length > 0;
+        list.push({ subject: s, topic: t, st: st, score: subtopicScore(st), engaged: engaged });
+      });
+    });
+  });
+  var eng = list.filter(function (x) { return x.engaged; });
+  var pool = eng.length ? eng : list;
+  pool.sort(function (a, b) { return a.score - b.score; });
+  return pool.slice(0, n);
+}
+
+function aiPayloadFor(subject, topic, st, count) {
+  var ss = deriveStageStatus(st);
+  var statusLabel = ss.stage === "none" ? "Not started"
+    : (ss.stage === "learning" ? "Learning" : "Completed") + " · " + ss.status;
+  return {
+    subject: subject ? subject.name : "", board: subject ? subject.board : "",
+    topic: topic ? topic.name : "", subtopic: st.name,
+    targetGrade: subject ? subject.target : "", status: statusLabel, count: count,
+    existing: (st.questions || []).map(function (q) { return q.q; }),
+    quizScore: subtopicQuizScore(st), attempts: subtopicAttemptSummary(st), missed: subtopicMissed(st, 8)
+  };
+}
+
+function generateWeakSpots() {
+  if (!sb) { confirmModal("Not connected", "Please refresh and sign in first.", null); return; }
+  var picks = weakestSubtopics(3);
+  if (!picks.length) { confirmModal("Nothing to target yet", "Add subjects and rate a few sub-topics (or take a quiz) first, so the app knows where he is struggling.", null); return; }
+  var names = picks.map(function (p) { return p.st.name + " (" + p.subject.name + ")"; }).join(", ");
+  confirmModal("Generate for his weakest areas?", "The app will create AI questions for: " + names + ". That is " + picks.length + " AI request" + (picks.length > 1 ? "s" : "") + ".", function () {
+    runWeakSpots(picks);
+  });
+}
+function runWeakSpots(picks) {
+  var m = el('<div class="modal"><div class="m-body"><h3>Generating…</h3>' +
+    '<p id="ws_msg" class="hint" style="white-space:pre-line;margin-top:6px"></p></div>' +
+    '<div class="m-foot"></div></div>');
+  openModal(m);
+  var msgEl = m.querySelector("#ws_msg"), foot = m.querySelector(".m-foot");
+  var i = 0, added = 0, lines = [];
+  function paint(cur) { msgEl.textContent = lines.concat(cur ? [cur] : []).join("\n"); }
+  function finish() {
+    lines.push("Done — added " + added + " question" + (added === 1 ? "" : "s") + ".");
+    paint();
+    var ok = el('<button class="btn primary">Close</button>');
+    ok.addEventListener("click", function () { closeModal(); render(); });
+    foot.appendChild(ok);
+  }
+  function step() {
+    if (i >= picks.length) { if (added) save(); finish(); return; }
+    var p = picks[i];
+    paint("(" + (i + 1) + "/" + picks.length + ") " + p.st.name + "…");
+    sb.functions.invoke("generate-questions", { body: aiPayloadFor(p.subject, p.topic, p.st, 5) }).then(function (res) {
+      var n = 0;
+      if (!res.error && res.data && !res.data.error) {
+        var qs = (res.data.questions || []).map(sanitizeAIQuestion).filter(Boolean);
+        p.st.questions = p.st.questions || [];
+        qs.forEach(function (q) { p.st.questions.push(q); });
+        n = qs.length; added += n;
+      }
+      lines.push("✓ " + p.st.name + " — " + (n ? ("+" + n) : "none"));
+      i++; step();
+    }).catch(function () { lines.push("✕ " + p.st.name + " — failed"); i++; step(); });
+  }
+  step();
+}
+
 function sanitizeAIQuestion(q) {
   if (!q || typeof q !== "object") return null;
   var text = String(q.q || "").trim(); if (!text) return null;
@@ -1269,15 +1373,7 @@ function openQuestionsModal(st, ctx) {
   aiGo.addEventListener("click", function () {
     if (!sb) { aiShow("Not connected — please refresh and sign in.", "err"); return; }
     var count = parseInt(m.querySelector("#ai_count").value, 10) || 5;
-    var ss = deriveStageStatus(st);
-    var statusLabel = ss.stage === "none" ? "Not started"
-      : (ss.stage === "learning" ? "Learning" : "Completed") + " · " + ss.status;
-    var payload = {
-      subject: subj ? subj.name : "", board: subj ? subj.board : "",
-      topic: top ? top.name : "", subtopic: st.name,
-      targetGrade: subj ? subj.target : "", status: statusLabel, count: count,
-      existing: st.questions.map(function (q) { return q.q; })
-    };
+    var payload = aiPayloadFor(subj, top, st, count);
     aiGo.disabled = true; aiShow("Generating… this can take a few seconds.");
     sb.functions.invoke("generate-questions", { body: payload }).then(function (res) {
       aiGo.disabled = false;

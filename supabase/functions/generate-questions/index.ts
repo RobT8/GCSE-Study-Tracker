@@ -1,7 +1,10 @@
 // Supabase Edge Function: generate-questions
-// Generates GCSE practice questions with Claude, tailored to the sub-topic,
-// the student's target grade and current progress. The Anthropic API key is
-// read from the ANTHROPIC_API_KEY secret and never leaves the server.
+// Generates GCSE practice questions with Claude, bespoke to the sub-topic,
+// the student's target grade, his current stage/status, AND his real quiz
+// performance (score + the specific questions he got wrong). The Anthropic
+// API key is read from the ANTHROPIC_API_KEY secret and never leaves the
+// server. Logical problems return HTTP 200 with an {error} field so the app
+// can show a friendly message.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -17,7 +20,7 @@ function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), { status, headers: { ...cors, "content-type": "application/json" } });
 }
 
-function difficultyFor(target: string, status: string): string {
+function difficultyFor(target: string, status: string, quizScore: number | null): string {
   const t = parseInt(String(target).replace(/[^0-9]/g, ""), 10);
   const s = String(status).toLowerCase();
   let band: string;
@@ -26,7 +29,9 @@ function difficultyFor(target: string, status: string): string {
   else if (t >= 1) band = "foundation (grades 1-3), mostly recall and straightforward application";
   else band = "a broad GCSE range from recall to some application";
   let adj = "";
-  if (s.indexOf("not started") >= 0 || s.indexOf("weak") >= 0) adj = " Start at the more accessible end to build confidence.";
+  if (quizScore !== null && quizScore < 45) adj = " He is scoring low here, so include some easier scaffolding questions that build up to the harder idea.";
+  else if (quizScore !== null && quizScore >= 80) adj = " He is scoring well here, so lean towards the harder end to stretch him.";
+  else if (s.indexOf("not started") >= 0 || s.indexOf("weak") >= 0) adj = " Start at the more accessible end to build confidence.";
   else if (s.indexOf("mastered") >= 0) adj = " Lean towards the harder end to stretch him.";
   return band + adj;
 }
@@ -34,7 +39,7 @@ function difficultyFor(target: string, status: string): string {
 // deno-lint-ignore no-explicit-any
 function parseQuestions(text: string): any[] {
   const out: any[] = [];
-  let s = String(text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
+  const s = String(text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
   let arr: any = null;
   try { arr = JSON.parse(s); } catch (_) {
     const m = s.match(/\[[\s\S]*\]/);
@@ -64,7 +69,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
   if (!ANTHROPIC_API_KEY) {
-    return json({ error: "AI is not configured yet. An ANTHROPIC_API_KEY secret needs adding to this Supabase project." }, 503);
+    return json({ error: "AI isn't switched on yet — an ANTHROPIC_API_KEY secret needs adding to this Supabase project." });
   }
   try {
     const body = await req.json().catch(() => ({}));
@@ -80,11 +85,21 @@ Deno.serve(async (req: Request) => {
     const existing = Array.isArray(body.existing)
       ? body.existing.slice(0, 40).map((s: unknown) => String(s).slice(0, 200))
       : [];
+    const quizScore = (typeof body.quizScore === "number" && isFinite(body.quizScore)) ? Math.round(body.quizScore) : null;
+    const attempts = (body.attempts && typeof body.attempts === "object") ? body.attempts : null;
+    const missed = Array.isArray(body.missed) ? body.missed.slice(0, 8).map((s: unknown) => String(s).slice(0, 240)) : [];
 
-    if (!subtopic && !topic && !subject) return json({ error: "Nothing to generate from." }, 400);
+    if (!subtopic && !topic && !subject) return json({ error: "Nothing to generate from." });
 
-    const difficulty = difficultyFor(target, status);
-    const system = `You are an experienced UK GCSE examiner and tutor. You write accurate, exam-appropriate practice questions${board ? ` aligned to the ${board} GCSE specification` : ""}. Every question must be factually correct and unambiguous, with a single clearly-correct answer, and pitched at the requested difficulty. Reply with ONLY valid JSON — no commentary, no markdown fences.`;
+    const difficulty = difficultyFor(target, status, quizScore);
+    const perf = quizScore !== null
+      ? `In recent app quizzes he scored about ${quizScore}% on this sub-topic${attempts ? ` (answered ${attempts.answered}, ${attempts.correct} correct)` : ""}.`
+      : "";
+    const missedBlock = missed.length
+      ? `He recently got these questions WRONG. Write NEW questions that probe the same underlying knowledge or misconception from a different angle so he can master it — do not copy their wording:\n- ${missed.join("\n- ")}`
+      : "";
+
+    const system = `You are an experienced UK GCSE examiner and tutor. You write accurate, exam-appropriate practice questions${board ? ` aligned to the ${board} GCSE specification` : ""}. Every question must be factually correct and unambiguous, with a single clearly-correct answer, and pitched at the requested difficulty. When told what the student is getting wrong, focus your questions there. Reply with ONLY valid JSON — no commentary, no markdown fences.`;
 
     const user = `Write ${count} GCSE practice questions for:
 Subject: ${subject}
@@ -92,7 +107,10 @@ Topic: ${topic}
 Sub-topic: ${subtopic}
 Target grade: ${target || "unspecified"} (GCSE grades run 9 highest to 1 lowest)
 Current level: ${status || "unspecified"}
+${perf}
 Pitch the difficulty at: ${difficulty}
+
+${missedBlock}
 
 Use a mix of multiple-choice and short-answer questions — multiple-choice for recall/understanding, short-answer for precise terms, values or definitions.
 ${existing.length ? `Do NOT repeat or closely paraphrase these existing questions:\n- ${existing.join("\n- ")}\n` : ""}
@@ -119,7 +137,7 @@ Rules: multiple-choice must have exactly 4 plausible options; keep short-answer 
 
     if (!resp.ok) {
       const detail = (await resp.text().catch(() => "")).slice(0, 300);
-      return json({ error: "The AI request failed.", detail }, 502);
+      return json({ error: "The AI request failed. Check the API key and its billing.", detail });
     }
     const data = await resp.json();
     const text = (data.content || [])
@@ -127,9 +145,9 @@ Rules: multiple-choice must have exactly 4 plausible options; keep short-answer 
       .map((b: { text?: string }) => b.text || "")
       .join("\n");
     const questions = parseQuestions(text);
-    if (!questions.length) return json({ error: "The AI didn't return usable questions — please try again." }, 502);
+    if (!questions.length) return json({ error: "The AI didn't return usable questions — please try again." });
     return json({ questions });
   } catch (e) {
-    return json({ error: String((e && (e as Error).message) || e) }, 500);
+    return json({ error: String((e && (e as Error).message) || e) });
   }
 });
